@@ -51,12 +51,7 @@ class SpeechSegmenter:
         self._threshold = threshold
         # Hysteresis as in Silero's reference code: speech ends below this.
         self._neg_threshold = threshold - 0.15
-        self._min_silence_frames = max(
-            1, min_silence_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES
-        )
-        self._max_segment_frames = max(
-            1, int(max_segment_seconds * SAMPLE_RATE / FRAME_SAMPLES)
-        )
+        self.set_limits(min_silence_ms, max_segment_seconds)
 
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
         self._context = np.zeros(CONTEXT_SAMPLES, dtype=np.float32)
@@ -64,6 +59,15 @@ class SpeechSegmenter:
         self._pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_FRAMES)
         self._segment: list[np.ndarray] = []
         self._silent_frames = 0
+
+    def set_limits(self, min_silence_ms: int, max_segment_seconds: float) -> None:
+        """Set the pause that ends a segment and the maximum segment length."""
+        self._min_silence_frames = max(
+            1, min_silence_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES
+        )
+        self._max_segment_frames = max(
+            1, int(max_segment_seconds * SAMPLE_RATE / FRAME_SAMPLES)
+        )
 
     @property
     def current_segment(self) -> np.ndarray | None:

@@ -1,13 +1,14 @@
 """User settings for the Parakeet server and the microphone listener.
 
-Each program reads these values once at start; nothing reloads them. The
-comment on each setting says which program reads it.
+The comment on each setting says which program reads it.
 
-Apply a server setting by stopping the server with
-`parakeet_client.py --stop-server`; the next transcription starts a fresh one.
+The server reads its setting once at start. Apply a server setting by
+stopping the server with `parakeet_client.py --stop-server`; the next
+transcription starts a fresh one.
 
-Apply a listener setting by restarting pclaude with no other pclaude open;
-wait about 3 s between exit and relaunch so the old listener exits first.
+The listener reloads this file when it changes, so a listener setting applies
+within about one poll interval after saving. If the file fails to load, the
+listener logs the error and keeps the old settings.
 """
 
 # Server setting. Parakeet backend. "cpu": int8 ONNX via onnx-asr (0.7 GB

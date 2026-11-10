@@ -18,6 +18,10 @@ While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
 transcript. Ctrl+\\ in a pclaude creates or removes the marker file.
 
+The listener reloads config.py when the file changes, so listener settings
+apply without a restart. If the new config.py fails to load, the listener
+logs the error and keeps the old settings.
+
 pclaude starts the listener detached. A lock file ensures that at most one
 listener per user runs, so several pclaude sessions share one microphone. The
 listener exits once no pclaude is running.
@@ -28,6 +32,7 @@ Usage:
 """
 
 import fcntl
+import importlib
 import logging
 import socket
 import sys
@@ -58,7 +63,22 @@ SESSION_CHECK_INTERVAL_S = 2.0
 # The terminal's delete-previous-character keystroke, same as a real backspace.
 BACKSPACE = b"\x7f"
 
+CONFIG_PATH = Path(config.__file__)
+
 logger = logging.getLogger("paraserv-listener")
+
+
+def _reload_config() -> bool:
+    """Reload config.py; on failure log the error, keep the old values, return False."""
+    try:
+        importlib.reload(config)
+    except Exception:
+        # The user edits config.py while the listener runs; a typo must not
+        # kill the listener.
+        logger.exception("cannot reload %s; keeping the old settings", CONFIG_PATH)
+        return False
+    logger.info("reloaded %s", CONFIG_PATH)
+    return True
 
 
 def _acquire_single_instance_lock() -> IO[str] | None:
@@ -175,8 +195,16 @@ def listen() -> None:
     ):
         logger.info("listening")
         next_session_check = time.monotonic() + SESSION_CHECK_INTERVAL_S
+        config_mtime = CONFIG_PATH.stat().st_mtime
         while True:
             sd.sleep(config.POLL_MS)
+            if (mtime := CONFIG_PATH.stat().st_mtime) != config_mtime:
+                config_mtime = mtime
+                if _reload_config():
+                    segmenter.set_limits(
+                        config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS
+                    )
+                    partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
             with lock:
                 fresh = pending_chunks.copy()
                 pending_chunks.clear()

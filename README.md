@@ -20,7 +20,8 @@ voice output.
   file or stops the server.
 - `paraserv_protocol.py` holds the socket locations and the message format.
 - `config.py` holds the settings: the backend, the pause that ends a turn, and
-  whether each transcript is submitted with Enter.
+  whether each transcript is submitted with Enter. The listener reloads it on
+  save, the server needs a restart.
 - `pclaude.sh` runs `pclaude.py` through the project venv; link it into `PATH`
   as `pclaude`.
 
