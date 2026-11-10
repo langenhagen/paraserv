@@ -4,8 +4,9 @@
 Silero VAD (vad.py) cuts the microphone stream at pauses of
 config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
 goes to the inject socket of the newest running pclaude.
-Enter follows each turn if config.SUBMIT_KEYWORD is empty, otherwise only a turn
-that ends with the keyword; the keyword itself is not sent to Claude.
+Enter follows right away if the turn ends with config.SUBMIT_KEYWORD, and
+otherwise after config.SUBMIT_SILENCE_MS of silence, unless the last turn ends
+with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to Claude.
 
 While a turn is still running, every config.PARTIAL_SECONDS of new speech
 re-transcribes the audio so far and shows it in the prompt field as a
@@ -139,19 +140,29 @@ def _send(data: bytes) -> bool:
     return True
 
 
-def inject(text: str) -> bool:
-    """Type the text into the newest pclaude; return False if none is running."""
+def _type_turn(
+    text: str, turn_end: float, enter_due: float | None
+) -> tuple[bool, float | None]:
+    """Type a finished turn into the newest pclaude and decide when Enter follows.
+
+    Return False first if no pclaude is running. Return as second value when to
+    press Enter for the typed text, or None if nothing waits for Enter.
+    """
+    submit_said = hold_said = False
     if config.SUBMIT_KEYWORD:
-        text, submit = _strip_trailing_phrase(text, config.SUBMIT_KEYWORD)
-    else:
-        submit = True
-    if not submit:
-        return _send(f"{text} ".encode())
-    if text:
-        if not _send(text.encode()):
-            return False
+        text, submit_said = _strip_trailing_phrase(text, config.SUBMIT_KEYWORD)
+    if config.HOLD_PHRASE and not submit_said:
+        text, hold_said = _strip_trailing_phrase(text, config.HOLD_PHRASE)
+    if text and not _send(f"{text} ".encode()):
+        return False, None
+    if submit_said:
         time.sleep(config.SUBMIT_DELAY_S)
-    return _send(b"\r")
+        return _send(b"\r"), None
+    if hold_said or config.SUBMIT_SILENCE_MS <= 0:
+        return True, None
+    if text or enter_due is not None:
+        return True, turn_end + _submit_wait_s()
+    return True, None
 
 
 def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
@@ -166,6 +177,12 @@ def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
     if match is None:
         return text, False
     return text[: match.start()], True
+
+
+def _submit_wait_s() -> float:
+    """Return how long after a turn ends Enter follows without the submit keyword."""
+    extra_silence_s = (config.SUBMIT_SILENCE_MS - config.MIN_SILENCE_MS) / 1000
+    return max(config.SUBMIT_DELAY_S, extra_silence_s)
 
 
 def _clear_partial(shown: str) -> bool:
@@ -196,6 +213,8 @@ def listen() -> None:
     partial_checked_samples = 0
     partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
     paused = False
+    # When to press Enter for the typed turns after SUBMIT_SILENCE_MS, or None.
+    enter_due: float | None = None
 
     def callback(
         indata: np.ndarray,
@@ -242,6 +261,7 @@ def listen() -> None:
                     partial_checked_samples = 0
             if fresh and not paused:
                 for segment in segmenter.feed(np.concatenate(fresh)):
+                    turn_end = time.monotonic()
                     if not _clear_partial(partial_shown):
                         logger.info("no pclaude running; exiting")
                         return
@@ -254,7 +274,8 @@ def listen() -> None:
                         text, pause_said = _strip_trailing_phrase(
                             text, config.PAUSE_PHRASE
                         )
-                    if text and not inject(text):
+                    running, enter_due = _type_turn(text, turn_end, enter_due)
+                    if not running:
                         logger.info("no pclaude running; exiting")
                         return
                     if pause_said:
@@ -278,6 +299,16 @@ def listen() -> None:
                             logger.info("no pclaude running; exiting")
                             return
                         partial_shown = partial_text
+            # Speaking again before enter_due adds the new turn to the same prompt.
+            if (
+                enter_due is not None
+                and time.monotonic() >= enter_due
+                and segmenter.current_segment is None
+            ):
+                enter_due = None
+                if not _send(b"\r"):
+                    logger.info("no pclaude running; exiting")
+                    return
             if time.monotonic() >= next_session_check:
                 if not _any_session_running():
                     logger.info("no pclaude running; exiting")

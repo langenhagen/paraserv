@@ -57,16 +57,22 @@ In `pclaude`, speak and pause. Each spoken turn appears in the prompt field.
 | Key or word      | Effect                                               |
 | ---------------- | ---------------------------------------------------- |
 | `Ctrl+\`         | Pause or resume listening in all `pclaude` sessions. |
-| "roger"          | Submit the spoken message to Claude.                 |
+| "roger"          | Submit the spoken message to Claude right away.      |
+| "hold it"        | Wait for more speech before submitting.              |
 | "stop listening" | Pause listening, like `Ctrl+\`.                      |
 
-Submit your message by saying the submit keyword as its last word. The keyword
-itself does not reach Claude; it only presses Enter. The keyword is "roger" by
-default; change it via `SUBMIT_KEYWORD` in `config.py`.  
-Set `SUBMIT_KEYWORD = ""` to submit after every pause instead.  
-Pause listening by saying the pause phrase as the last words of your message;
-press `Ctrl+\` to resume. The phrase is "stop listening" by default; change it
-via `PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  
+Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default.  
+To submit right away, say the submit keyword ("roger" by default) as the last
+word. The keyword itself does not reach Claude; it only presses Enter. Change
+the keyword via `SUBMIT_KEYWORD` in `config.py`.  
+To think longer, end your message with the hold phrase ("hold it" by default).
+The phrase does not reach Claude either. Your next voice input again submits
+after `SUBMIT_SILENCE_MS` and reacts to the submit keyword and the hold phrase
+as before. Change the phrase via `HOLD_PHRASE` in `config.py`.  
+Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.  
+Pause listening by saying the pause phrase ("stop listening" by default) as the
+last words of your message. Press `Ctrl+\` to resume. Change the phrase via
+`PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  
 The listener reloads `config.py` on save.  
 After changing `DEVICE`, stop the server; the next turn starts a fresh one.
 

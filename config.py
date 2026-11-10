@@ -22,13 +22,23 @@ MIN_SILENCE_MS = 1500
 # Listener setting. Cut a turn at this length even without a pause.
 MAX_SEGMENT_SECONDS = 30.0
 
-# Listener setting. Specify when Enter submits the prompt to Claude Code.
-# "": Enter after MIN_SILENCE_MS, so Claude Code receives it right away.
-# A word such as "roger": Enter only after a turn that ends with this word.
-# Other turns pile up in the prompt field, separated by spaces. The keyword
+# Listener setting. A turn that ends with this word submits the prompt to
+# Claude Code right away, without waiting for SUBMIT_SILENCE_MS. The keyword
 # itself is not sent to Claude, and a turn of only this word just presses
-# Enter. Case and trailing punctuation do not matter.
+# Enter. Case and trailing punctuation do not matter. "" disables it.
 SUBMIT_KEYWORD = "roger"
+
+# Listener setting. Submit the prompt after this much silence since your last
+# word. Each turn is typed after MIN_SILENCE_MS already; speaking again before
+# SUBMIT_SILENCE_MS adds to the same prompt. 0 disables it, so only
+# SUBMIT_KEYWORD submits, and turns pile up in the prompt field until then.
+SUBMIT_SILENCE_MS = 3400
+
+# Listener setting. A turn that ends with this phrase gets no Enter after
+# SUBMIT_SILENCE_MS, however long the silence lasts. The next turn without the
+# phrase submits everything typed so far. The phrase itself is not typed. Case
+# and punctuation do not matter. "" disables it.
+HOLD_PHRASE = "hold it"
 
 # Listener setting. A turn that ends with this phrase pauses listening, like
 # Ctrl+\ in pclaude; Ctrl+\ resumes it. The text before the phrase is typed
@@ -36,7 +46,8 @@ SUBMIT_KEYWORD = "roger"
 # disables it. The pause holds across pclaude restarts.
 PAUSE_PHRASE = "stop listening"
 
-# Listener setting. Wait this long between the transcript and its Enter.
+# Listener setting. Wait at least this long between the transcript and its
+# Enter.
 # Claude Code may treat text and Enter that arrive together as a paste and
 # insert a line break. Leave it as is; raise it only if a turn lands as an
 # extra line instead of being submitted.
