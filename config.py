@@ -30,6 +30,12 @@ MAX_SEGMENT_SECONDS = 30.0
 # Enter. Case and trailing punctuation do not matter.
 SUBMIT_KEYWORD = "roger"
 
+# Listener setting. A turn that ends with this phrase pauses listening, like
+# Ctrl+\ in pclaude; Ctrl+\ resumes it. The text before the phrase is typed
+# as usual, the phrase itself is not. Case and punctuation do not matter. ""
+# disables it. The pause holds across pclaude restarts.
+PAUSE_PHRASE = "stop listening"
+
 # Listener setting. Wait this long between the transcript and its Enter.
 # Claude Code may treat text and Enter that arrive together as a paste and
 # insert a line break. Leave it as is; raise it only if a turn lands as an

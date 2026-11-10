@@ -54,15 +54,19 @@ printf 'hello' | nc -U ~/.cache/paraserv/inject-<pid>.sock  # type into pclaude 
 
 In `pclaude`, speak and pause. Each spoken turn appears in the prompt field.
 
-| Key or word | Effect                                               |
-| ----------- | ---------------------------------------------------- |
-| `Ctrl+\`    | Pause or resume listening in all `pclaude` sessions. |
-| "roger"     | Submit the spoken message to Claude.                 |
+| Key or word      | Effect                                               |
+| ---------------- | ---------------------------------------------------- |
+| `Ctrl+\`         | Pause or resume listening in all `pclaude` sessions. |
+| "roger"          | Submit the spoken message to Claude.                 |
+| "stop listening" | Pause listening, like `Ctrl+\`.                      |
 
 Submit your message by saying the submit keyword as its last word. The keyword
 itself does not reach Claude; it only presses Enter. The keyword is "roger" by
 default; change it via `SUBMIT_KEYWORD` in `config.py`.  
 Set `SUBMIT_KEYWORD = ""` to submit after every pause instead.  
+Pause listening by saying the pause phrase as the last words of your message;
+press `Ctrl+\` to resume. The phrase is "stop listening" by default; change it
+via `PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  
 The listener reloads `config.py` on save.  
 After changing `DEVICE`, stop the server; the next turn starts a fresh one.
 

@@ -23,7 +23,8 @@ STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every connection
 into Claude Code's prompt field; "\\r" submits.
 
 While the marker file STATE_DIR/listener-paused exists, the listener discards
-the microphone audio. Ctrl+\\ in a pclaude creates or removes it.
+the microphone audio. Ctrl+\\ in pclaude creates or removes it; the
+listener creates it when it hears config.PAUSE_PHRASE.
 """
 
 import io

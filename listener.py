@@ -16,7 +16,9 @@ provisional transcripts.
 
 While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
-transcript. Ctrl+\\ in a pclaude creates or removes the marker file.
+transcript. Ctrl+\\ in pclaude creates or removes the marker file. A turn
+that ends with config.PAUSE_PHRASE creates it: the listener types the text
+before the phrase as usual, drops the phrase, and pauses.
 
 The listener reloads config.py when the file changes, so listener settings
 apply without a restart. If the new config.py fails to load, the listener
@@ -139,7 +141,10 @@ def _send(data: bytes) -> bool:
 
 def inject(text: str) -> bool:
     """Type the text into the newest pclaude; return False if none is running."""
-    text, submit = _strip_submit_keyword(text)
+    if config.SUBMIT_KEYWORD:
+        text, submit = _strip_trailing_phrase(text, config.SUBMIT_KEYWORD)
+    else:
+        submit = True
     if not submit:
         return _send(f"{text} ".encode())
     if text:
@@ -149,17 +154,15 @@ def inject(text: str) -> bool:
     return _send(b"\r")
 
 
-def _strip_submit_keyword(text: str) -> tuple[str, bool]:
-    """Remove a trailing config.SUBMIT_KEYWORD; return the rest and whether to submit.
+def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
+    """Remove the phrase from the end of text; return the rest and whether it was there.
 
-    Commas and spaces before the keyword and punctuation after it go too, so
-    "Fix it, Roger." becomes "Fix it" and "Fix it. Roger." becomes "Fix it.".
-    Without a keyword, every turn submits.
+    Case and punctuation between and after the phrase's words do not matter.
+    Commas and spaces before the phrase go too, so for "roger", "Fix it, Roger."
+    becomes "Fix it" and "Fix it. Roger." becomes "Fix it.".
     """
-    if not config.SUBMIT_KEYWORD:
-        return text, True
-    keyword = re.escape(config.SUBMIT_KEYWORD)
-    match = re.search(rf"[\s,]*\b{keyword}\W*$", text, flags=re.IGNORECASE)
+    words = r"\W+".join(re.escape(word) for word in phrase.split())
+    match = re.search(rf"[\s,]*\b{words}\W*$", text, flags=re.IGNORECASE)
     if match is None:
         return text, False
     return text[: match.start()], True
@@ -246,13 +249,25 @@ def listen() -> None:
                     partial_checked_samples = 0
                     text = transcribe(segment)
                     logger.info("heard: %r", text)
+                    pause_said = False
+                    if config.PAUSE_PHRASE:
+                        text, pause_said = _strip_trailing_phrase(
+                            text, config.PAUSE_PHRASE
+                        )
                     if text and not inject(text):
                         logger.info("no pclaude running; exiting")
                         return
+                    if pause_said:
+                        LISTENER_PAUSED_PATH.touch()
+                        paused = True
+                        segmenter.flush()  # drop the speech after the pause phrase
+                        logger.info("paused by the pause phrase")
+                        break
 
                 current = segmenter.current_segment
                 if (
-                    config.PARTIAL_SECONDS > 0
+                    not paused
+                    and config.PARTIAL_SECONDS > 0
                     and current is not None
                     and len(current) - partial_checked_samples >= partial_audio_samples
                 ):
