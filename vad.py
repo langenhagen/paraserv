@@ -44,8 +44,14 @@ class SpeechSegmenter:
         threshold: float = 0.5,
     ) -> None:
         """Load Silero VAD and set the pause and length limits of a segment."""
+        # One thread: the default thread pool busy-waits between the ~31 tiny
+        # runs per second and burns ~30% of a core; one thread uses ~1%.
+        options = rt.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
         self._session = rt.InferenceSession(
             resolve_vad_path(),
+            sess_options=options,
             providers=["CPUExecutionProvider"],
         )
         self._threshold = threshold
