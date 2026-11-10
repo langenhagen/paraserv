@@ -8,6 +8,10 @@ types the text of every connection into Claude Code's prompt field; "\\r"
 submits. Starts the microphone listener (listener.py) in the background if it
 is not running.
 
+Ctrl+\\ pauses or resumes the listener for all pclaude sessions: it creates or
+removes the marker file STATE_DIR/listener-paused and does not reach Claude
+Code.
+
 Usage:
 
     pclaude.py [CLAUDE_ARGS...]     run claude with these arguments
@@ -29,13 +33,22 @@ import termios
 import tty
 from pathlib import Path
 
-from paraserv_protocol import LISTENER_LOG_PATH, ensure_state_dir, inject_socket_path
+from paraserv_protocol import (
+    LISTENER_LOG_PATH,
+    LISTENER_PAUSED_PATH,
+    ensure_state_dir,
+    inject_socket_path,
+)
 
 LISTENER_SCRIPT = Path(__file__).resolve().parent / "listener.py"
 READ_SIZE = 65536
 # Upper bound for reading one inject connection, so a stuck sender cannot
 # freeze the terminal.
 INJECT_READ_TIMEOUT_S = 1.0
+
+# Ctrl+\ as a plain control byte, and as the CSI u sequence that terminals and
+# tmux send instead once Claude Code turns on extended key reporting.
+PAUSE_KEYS = (b"\x1c", b"\x1b[92;5u")
 
 
 def _write_all(fd: int, data: bytes) -> None:
@@ -58,6 +71,18 @@ def _start_listener() -> None:
             stderr=log_file,
             start_new_session=True,  # Ctrl-C in this terminal must not reach it
         )
+
+
+def _take_pause_keys(data: bytes) -> bytes:
+    """Toggle the listener pause once per Ctrl+\\ in data; return data without them."""
+    for key in PAUSE_KEYS:
+        for _ in range(data.count(key)):
+            if LISTENER_PAUSED_PATH.exists():
+                LISTENER_PAUSED_PATH.unlink()
+            else:
+                LISTENER_PAUSED_PATH.touch()
+        data = data.replace(key, b"")
+    return data
 
 
 def _read_inject(server: socket.socket) -> bytes:
@@ -95,7 +120,7 @@ def _relay(master_fd: int, server: socket.socket) -> None:
         if stdin_fd in readable:
             data = os.read(stdin_fd, READ_SIZE)
             if data:
-                _write_all(master_fd, data)
+                _write_all(master_fd, _take_pause_keys(data))
             else:
                 sources.remove(stdin_fd)
         if server in readable:

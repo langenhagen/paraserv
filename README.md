@@ -3,12 +3,14 @@
 Talk to Claude Code hands-free. Speech from the microphone is transcribed by a
 local [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
 server and typed into Claude Code's prompt field as if typed by hand. The
-headset mute button is the off switch. Pairs with kokoserv, the Kokoro
-text-to-speech server, for voice output.
+headset mute button is the off switch, and Ctrl+\ in a `pclaude` pauses and
+resumes listening. Pairs with kokoserv, the Kokoro text-to-speech server, for
+voice output.
 
 - `pclaude.py` runs `claude` in a pseudo-terminal, so Claude Code looks and
   works as before, typing included. It types text from its inject socket into
-  the prompt field and starts the listener.
+  the prompt field and starts the listener. Ctrl+\ toggles the marker file
+  `listener-paused`, which pauses the listener for all `pclaude` sessions.
 - `listener.py` records the microphone, cuts it at pauses with Silero VAD
   (`vad.py`), sends each spoken turn to the server, and sends the transcript to
   the newest running `pclaude`. It exits once no `pclaude` runs.

@@ -14,6 +14,10 @@ type the new one. The pause at the end of the turn replaces it with the
 final transcript the same way. config.PARTIAL_SECONDS = 0 disables
 provisional transcripts.
 
+While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
+microphone audio and drops an unfinished turn together with its provisional
+transcript. Ctrl+\\ in a pclaude creates or removes the marker file.
+
 pclaude starts the listener detached. A lock file ensures that at most one
 listener per user runs, so several pclaude sessions share one microphone. The
 listener exits once no pclaude is running.
@@ -41,6 +45,7 @@ from parakeet_client import connect_or_start_server, transcribe
 from paraserv_protocol import (
     INJECT_SOCKET_GLOB,
     LISTENER_LOCK_PATH,
+    LISTENER_PAUSED_PATH,
     SAMPLE_RATE,
     STATE_DIR,
     ensure_state_dir,
@@ -148,6 +153,7 @@ def listen() -> None:
     partial_shown = ""
     partial_checked_samples = 0
     partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
+    paused = False
 
     def callback(
         indata: np.ndarray,
@@ -174,7 +180,17 @@ def listen() -> None:
             with lock:
                 fresh = pending_chunks.copy()
                 pending_chunks.clear()
-            if fresh:
+            if LISTENER_PAUSED_PATH.exists() != paused:
+                paused = not paused
+                logger.info("paused" if paused else "resumed")
+                if paused:
+                    segmenter.flush()  # drop the unfinished turn
+                    if not _clear_partial(partial_shown):
+                        logger.info("no pclaude running; exiting")
+                        return
+                    partial_shown = ""
+                    partial_checked_samples = 0
+            if fresh and not paused:
                 for segment in segmenter.feed(np.concatenate(fresh)):
                     if not _clear_partial(partial_shown):
                         logger.info("no pclaude running; exiting")

@@ -21,6 +21,9 @@ Responses (server -> client):
 Each pclaude process listens on its own inject socket,
 STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every connection
 into Claude Code's prompt field; "\\r" submits.
+
+While the marker file STATE_DIR/listener-paused exists, the listener discards
+the microphone audio. Ctrl+\\ in a pclaude creates or removes it.
 """
 
 import io
@@ -54,6 +57,7 @@ SERVER_LOCK_PATH = STATE_DIR / "parakeet-server.lock"
 SERVER_LOG_PATH = STATE_DIR / "parakeet-server.log"
 LISTENER_LOCK_PATH = STATE_DIR / "listener.lock"
 LISTENER_LOG_PATH = STATE_DIR / "listener.log"
+LISTENER_PAUSED_PATH = STATE_DIR / "listener-paused"
 INJECT_SOCKET_GLOB = "inject-*.sock"
 
 
