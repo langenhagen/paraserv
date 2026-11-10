@@ -15,6 +15,7 @@ The project is structured as follows:
 
 ```
 .
+├── autostart/              Optional launchd agent and systemd user service for the server.
 ├── config.py               Settings; the listener reloads them on save.
 ├── LICENSE                 License definition.
 ├── listener.py             Records the microphone and sends each spoken turn to pclaude.
@@ -86,6 +87,43 @@ microphone and one model. The listener exits once no `pclaude` runs. The server
 keeps running after the last `pclaude` exits, so the next start skips the model
 load. Nothing restarts the server after a crash; the next listener starts a
 fresh one.
+
+## Autostart On macOS
+
+Optional; without it, the first `pclaude` starts the server. The launchd agent
+in `autostart/` starts the server once per login and never restarts it. Run
+`pclaude` once first, so that the log directory exists.
+
+```bash
+cp autostart/com.andreasl.parakeet-server.plist ~/Library/LaunchAgents/
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.andreasl.parakeet-server.plist
+```
+
+Remove it again:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.andreasl.parakeet-server"
+rm ~/Library/LaunchAgents/com.andreasl.parakeet-server.plist
+```
+
+## Autostart On Linux
+
+Optional; same behavior as on macOS, via a systemd user service.
+
+```bash
+mkdir --parents ~/.config/systemd/user
+cp autostart/parakeet-server.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now parakeet-server.service
+journalctl --user --unit parakeet-server.service  # view the log
+```
+
+Remove it again:
+
+```bash
+systemctl --user disable --now parakeet-server.service
+rm ~/.config/systemd/user/parakeet-server.service
+```
 
 ## License
 

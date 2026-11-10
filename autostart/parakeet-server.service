@@ -1,0 +1,12 @@
+# systemd user service: start the Parakeet server once at login, never restart it.
+# Install: see README.md, section "Autostart On Linux".
+[Unit]
+Description=Parakeet speech-to-text server
+
+[Service]
+Type=simple
+ExecStart=%h/Dev/paraserv/.venv/bin/python %h/Dev/paraserv/parakeet_server.py
+Restart=no
+
+[Install]
+WantedBy=default.target
