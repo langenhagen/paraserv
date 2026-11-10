@@ -7,6 +7,13 @@ transcript goes to the inject socket of the newest running pclaude, followed
 by Enter if config.AUTO_SUBMIT is set. The headset mute button silences the
 microphone, so muted speech never reaches Claude Code.
 
+While a turn is still running, every config.PARTIAL_SECONDS of new speech
+re-transcribes the audio so far and shows it in the prompt field as a
+provisional transcript: backspace over the previous provisional text, then
+type the new one. The pause at the end of the turn replaces it with the
+final transcript the same way. config.PARTIAL_SECONDS = 0 disables
+provisional transcripts.
+
 pclaude starts the listener detached. A lock file ensures that at most one
 listener per user runs, so several pclaude sessions share one microphone. The
 listener exits once no pclaude is running.
@@ -42,6 +49,9 @@ from vad import SpeechSegmenter
 
 # Check this often whether any pclaude still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
+
+# The terminal's delete-previous-character keystroke, same as a real backspace.
+BACKSPACE = b"\x7f"
 
 logger = logging.getLogger("paraserv-listener")
 
@@ -111,6 +121,16 @@ def inject(text: str) -> bool:
     return _send(b"\r")
 
 
+def _clear_partial(shown: str) -> bool:
+    """Backspace over a provisional transcript typed by _update_partial."""
+    return _send(BACKSPACE * len(shown)) if shown else True
+
+
+def _update_partial(shown: str, text: str) -> bool:
+    """Replace a provisional transcript with a new one in a single write."""
+    return _send(BACKSPACE * len(shown) + text.encode())
+
+
 def _any_session_running() -> bool:
     """Return whether any pclaude inject socket accepts connections."""
     sock = _connect_newest_inject()
@@ -125,6 +145,9 @@ def listen() -> None:
     segmenter = SpeechSegmenter(config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS)
     pending_chunks: list[np.ndarray] = []
     lock = threading.Lock()
+    partial_shown = ""
+    partial_checked_samples = 0
+    partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
 
     def callback(
         indata: np.ndarray,
@@ -153,11 +176,30 @@ def listen() -> None:
                 pending_chunks.clear()
             if fresh:
                 for segment in segmenter.feed(np.concatenate(fresh)):
+                    if not _clear_partial(partial_shown):
+                        logger.info("no pclaude running; exiting")
+                        return
+                    partial_shown = ""
+                    partial_checked_samples = 0
                     text = transcribe(segment)
                     logger.info("heard: %r", text)
                     if text and not inject(text):
                         logger.info("no pclaude running; exiting")
                         return
+
+                current = segmenter.current_segment
+                if (
+                    config.PARTIAL_SECONDS > 0
+                    and current is not None
+                    and len(current) - partial_checked_samples >= partial_audio_samples
+                ):
+                    partial_checked_samples = len(current)
+                    partial_text = transcribe(current)
+                    if partial_text != partial_shown:
+                        if not _update_partial(partial_shown, partial_text):
+                            logger.info("no pclaude running; exiting")
+                            return
+                        partial_shown = partial_text
             if time.monotonic() >= next_session_check:
                 if not _any_session_running():
                     logger.info("no pclaude running; exiting")
