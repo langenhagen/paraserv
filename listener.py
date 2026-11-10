@@ -2,10 +2,10 @@
 """Listen to the microphone and type each spoken turn into Claude Code.
 
 Silero VAD (vad.py) cuts the microphone stream at pauses of
-config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the
-transcript goes to the inject socket of the newest running pclaude, followed
-by Enter if config.AUTO_SUBMIT is set. The headset mute button silences the
-microphone, so muted speech never reaches Claude Code.
+config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
+goes to the inject socket of the newest running pclaude.
+Enter follows each turn if config.SUBMIT_KEYWORD is empty, otherwise only a turn
+that ends with the keyword; the keyword itself is not sent to Claude.
 
 While a turn is still running, every config.PARTIAL_SECONDS of new speech
 re-transcribes the audio so far and shows it in the prompt field as a
@@ -34,6 +34,7 @@ Usage:
 import fcntl
 import importlib
 import logging
+import re
 import socket
 import sys
 import threading
@@ -138,12 +139,30 @@ def _send(data: bytes) -> bool:
 
 def inject(text: str) -> bool:
     """Type the text into the newest pclaude; return False if none is running."""
-    if not config.AUTO_SUBMIT:
+    text, submit = _strip_submit_keyword(text)
+    if not submit:
         return _send(f"{text} ".encode())
-    if not _send(text.encode()):
-        return False
-    time.sleep(config.SUBMIT_DELAY_S)
+    if text:
+        if not _send(text.encode()):
+            return False
+        time.sleep(config.SUBMIT_DELAY_S)
     return _send(b"\r")
+
+
+def _strip_submit_keyword(text: str) -> tuple[str, bool]:
+    """Remove a trailing config.SUBMIT_KEYWORD; return the rest and whether to submit.
+
+    Commas and spaces before the keyword and punctuation after it go too, so
+    "Fix it, Roger." becomes "Fix it" and "Fix it. Roger." becomes "Fix it.".
+    Without a keyword, every turn submits.
+    """
+    if not config.SUBMIT_KEYWORD:
+        return text, True
+    keyword = re.escape(config.SUBMIT_KEYWORD)
+    match = re.search(rf"[\s,]*\b{keyword}\W*$", text, flags=re.IGNORECASE)
+    if match is None:
+        return text, False
+    return text[: match.start()], True
 
 
 def _clear_partial(shown: str) -> bool:

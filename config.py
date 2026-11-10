@@ -22,10 +22,13 @@ MIN_SILENCE_MS = 1500
 # Listener setting. Cut a turn at this length even without a pause.
 MAX_SEGMENT_SECONDS = 30.0
 
-# Listener setting. Press Enter after each transcript, so Claude Code receives
-# it right away. Without it, transcripts pile up in the prompt field,
-# separated by spaces.
-AUTO_SUBMIT = True
+# Listener setting. Specify when Enter submits the prompt to Claude Code.
+# "": Enter after MIN_SILENCE_MS, so Claude Code receives it right away.
+# A word such as "roger": Enter only after a turn that ends with this word.
+# Other turns pile up in the prompt field, separated by spaces. The keyword
+# itself is not sent to Claude, and a turn of only this word just presses
+# Enter. Case and trailing punctuation do not matter.
+SUBMIT_KEYWORD = "roger"
 
 # Listener setting. Wait this long between the transcript and its Enter.
 # Claude Code may treat text and Enter that arrive together as a paste and
