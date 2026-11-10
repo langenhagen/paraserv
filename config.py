@@ -16,7 +16,7 @@ DEVICE = "cpu"
 
 # Listener setting. A pause of this length ends a spoken turn and sends it to
 # Claude Code.
-MIN_SILENCE_MS = 1200
+MIN_SILENCE_MS = 1500
 
 # Listener setting. Cut a turn at this length even without a pause.
 MAX_SEGMENT_SECONDS = 30.0
