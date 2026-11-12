@@ -37,7 +37,7 @@ SUBMIT_SILENCE_MS = 3400
 # Listener setting. A turn with fewer characters than this, such as "Okay" or a
 # misheard noise, gets no Enter after SUBMIT_SILENCE_MS; it stays in the prompt
 # field. It is still sent along if longer text before it waits for its Enter.
-# The submit keyword and the Enter key still submit it.
+# The submit keyword and the Enter key still submit it. 0 disables it.
 MIN_SUBMIT_CHARS = 6
 
 # Listener setting. A turn that ends with this phrase gets no Enter after
