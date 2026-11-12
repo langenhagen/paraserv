@@ -59,6 +59,7 @@ In `pclaude`, speak and pause. Each spoken turn appears in the prompt field.
 | `Ctrl+\`         | Pause or resume listening in all `pclaude` sessions. |
 | "roger"          | Submit the spoken message to Claude right away.      |
 | "hold it"        | Wait for more speech before submitting.              |
+| "clear message"  | Clear the whole message.                             |
 | "stop listening" | Pause listening, like `Ctrl+\`.                      |
 
 Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default.  
@@ -72,6 +73,9 @@ as before. Change the phrase via `HOLD_PHRASE` in `config.py`.
 Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.  
 Messages shorter than `MIN_SUBMIT_CHARS`, 6 characters by default, are not
 submitted after the silence; say the submit keyword or press Enter.  
+To start over, end your message with the clear phrase ("clear message" by
+default). It clears the whole prompt field; `Ctrl+Y` brings the text back.
+Change the phrase via `CLEAR_PHRASE` in `config.py`.  
 Pause listening by saying the pause phrase ("stop listening" by default) as the
 last words of your message. Press `Ctrl+\` to resume. Change the phrase via
 `PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  

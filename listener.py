@@ -7,6 +7,8 @@ goes to the inject socket of the newest running pclaude.
 Enter follows right away if the turn ends with config.SUBMIT_KEYWORD, and
 otherwise after config.SUBMIT_SILENCE_MS of silence, unless the last turn ends
 with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to Claude.
+A turn that ends with config.CLEAR_PHRASE clears the whole prompt field with
+Ctrl+U instead.
 
 While a turn is still running, every config.PARTIAL_SECONDS of new speech
 re-transcribes the audio so far and shows it in the prompt field as a
@@ -66,6 +68,10 @@ SESSION_CHECK_INTERVAL_S = 2.0
 
 # The terminal's delete-previous-character keystroke, same as a real backspace.
 BACKSPACE = b"\x7f"
+
+# Ctrl+U: Claude Code (2.1.111 and later) clears the whole prompt field, also
+# text typed by hand; Ctrl+Y brings it back.
+CLEAR_PROMPT = b"\x15"
 
 CONFIG_PATH = Path(config.__file__)
 
@@ -148,6 +154,10 @@ def _type_turn(
     Return False first if no pclaude is running. Return as second value when to
     press Enter for the typed text, or None if nothing waits for Enter.
     """
+    if config.CLEAR_PHRASE:
+        text, clear_said = _strip_trailing_phrase(text, config.CLEAR_PHRASE)
+        if clear_said:
+            return _send(CLEAR_PROMPT), None
     submit_said = hold_said = False
     if config.SUBMIT_KEYWORD:
         text, submit_said = _strip_trailing_phrase(text, config.SUBMIT_KEYWORD)

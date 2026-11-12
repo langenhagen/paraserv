@@ -46,6 +46,12 @@ MIN_SUBMIT_CHARS = 6
 # and punctuation do not matter. "" disables it.
 HOLD_PHRASE = "hold it"
 
+# Listener setting. A turn that ends with this phrase clears the whole prompt
+# field, including earlier turns and text typed by hand, and cancels a
+# pending Enter. Ctrl+Y in Claude Code brings the text back. Case and
+# punctuation do not matter. "" disables it.
+CLEAR_PHRASE = "clear message"
+
 # Listener setting. A turn that ends with this phrase pauses listening, like
 # Ctrl+\ in pclaude; Ctrl+\ resumes it. The text before the phrase is typed
 # as usual, the phrase itself is not. Case and punctuation do not matter. ""
