@@ -74,9 +74,12 @@ SESSION_CHECK_INTERVAL_S = 2.0
 # The terminal's delete-previous-character keystroke, same as a real backspace.
 BACKSPACE = b"\x7f"
 
-# Ctrl+U: Claude Code (2.1.111 and later) clears the whole prompt field, also
-# text typed by hand; Ctrl+Y brings it back.
-CLEAR_PROMPT = b"\x15"
+# Ctrl+U: Claude Code deletes one line of the prompt field, as shown on screen.
+# Text longer than the terminal is wide continues on the next line, so a long
+# message fills several. 50 Ctrl+U clear messages of up to 50 lines, also text
+# typed by hand; extra ones on an empty prompt do nothing. Ctrl+Y brings the
+# whole text back. Claude Code ignores 100 in one write as a paste.
+CLEAR_PROMPT = b"\x15" * 50
 
 CONFIG_PATH = Path(config.__file__)
 
