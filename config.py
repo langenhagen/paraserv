@@ -26,7 +26,7 @@ MAX_SEGMENT_SECONDS = 30.0
 # Claude Code right away, without waiting for SUBMIT_SILENCE_MS. The keyword
 # itself is not sent to Claude, and a turn of only this word just presses
 # Enter. Case and trailing punctuation do not matter. "" disables it.
-SUBMIT_KEYWORD = "roger"
+SUBMIT_KEYWORD: str = "roger"
 
 # Listener setting. Submit the prompt after this much silence since your last
 # word. Each turn is typed after MIN_SILENCE_MS already; speaking again before
@@ -52,19 +52,19 @@ MIN_SUBMIT_CHARS = 6
 # SUBMIT_SILENCE_MS, however long the silence lasts. The next turn without the
 # phrase submits everything typed so far. The phrase itself is not typed. Case
 # and punctuation do not matter. "" disables it.
-HOLD_PHRASE = "hold it"
+HOLD_PHRASE: str = "hold it"
 
 # Listener setting. A turn that ends with this phrase clears the whole prompt
 # field, including earlier turns and text typed by hand, and cancels a
 # pending Enter. Ctrl+Y in Claude Code brings the text back. Case and
 # punctuation do not matter. "" disables it.
-CLEAR_PHRASE = "clear message"
+CLEAR_PHRASE: str = "clear message"
 
 # Listener setting. A turn that ends with this phrase pauses listening, like
 # Ctrl+\ in pclaude; Ctrl+\ resumes it. The text before the phrase is typed
 # as usual, the phrase itself is not. Case and punctuation do not matter. ""
 # disables it. The pause holds across pclaude restarts.
-PAUSE_PHRASE = "stop listening"
+PAUSE_PHRASE: str = "stop listening"
 
 # Listener setting. Wait at least this long between the transcript and its
 # Enter.

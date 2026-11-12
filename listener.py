@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Listen to the microphone and type each spoken turn into Claude Code.
+r"""Listen to the microphone and type each spoken turn into Claude Code.
 
 Silero VAD (vad.py) cuts the microphone stream at pauses of
 config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
@@ -24,7 +24,7 @@ provisional transcripts.
 
 While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
-transcript. Ctrl+\\ in pclaude creates or removes the marker file. A turn
+transcript. Ctrl+\ in pclaude creates or removes the marker file. A turn
 that ends with config.PAUSE_PHRASE creates it: the listener types the text
 before the phrase as usual, drops the phrase, and pauses.
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Run Claude Code with speech input from the microphone listener.
+r"""Run Claude Code with speech input from the microphone listener.
 
 Starts `claude` in a pseudo-terminal and forwards keystrokes, output, and
 window resizes unchanged, so Claude Code looks and works as before, typing
 included. Also listens on the inject socket STATE_DIR/inject-<pid>.sock and
-types the text of every connection into Claude Code's prompt field; "\\r"
+types the text of every connection into Claude Code's prompt field; "\r"
 submits. Starts the microphone listener (listener.py) in the background if it
 is not running.
 
-Ctrl+\\ pauses or resumes the listener for all pclaude sessions: it creates or
+Ctrl+\ pauses or resumes the listener for all pclaude sessions: it creates or
 removes the marker file STATE_DIR/listener-paused and does not reach Claude
 Code.
 
@@ -31,6 +31,7 @@ import subprocess
 import sys
 import termios
 import tty
+from contextlib import suppress
 from pathlib import Path
 
 from paraserv_protocol import (
@@ -74,7 +75,7 @@ def _start_listener() -> None:
 
 
 def _take_pause_keys(data: bytes) -> bytes:
-    """Toggle the listener pause once per Ctrl+\\ in data; return data without them."""
+    r"""Toggle the listener pause once per Ctrl+\ in data; return data without them."""
     for key in PAUSE_KEYS:
         for _ in range(data.count(key)):
             if LISTENER_PAUSED_PATH.exists():
@@ -91,11 +92,9 @@ def _read_inject(server: socket.socket) -> bytes:
     with conn:
         conn.settimeout(INJECT_READ_TIMEOUT_S)
         chunks = []
-        try:
+        with suppress(TimeoutError):
             while chunk := conn.recv(READ_SIZE):
                 chunks.append(chunk)
-        except TimeoutError:
-            pass
     return b"".join(chunks)
 
 

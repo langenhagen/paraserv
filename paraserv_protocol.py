@@ -1,4 +1,4 @@
-"""Shared file locations and message framing for paraserv's programs.
+r"""Shared file locations and message framing for paraserv's programs.
 
 The Parakeet server listens on a Unix domain socket. Every message in both
 directions is one frame:
@@ -20,20 +20,22 @@ Responses (server -> client):
 
 Each pclaude process listens on its own inject socket,
 STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every connection
-into Claude Code's prompt field; "\\r" submits.
+into Claude Code's prompt field; "\r" submits.
 
 While the marker file STATE_DIR/listener-paused exists, the listener discards
-the microphone audio. Ctrl+\\ in pclaude creates or removes it; the
+the microphone audio. Ctrl+\ in pclaude creates or removes it; the
 listener creates it when it hears config.PAUSE_PHRASE.
 """
 
-import io
 import json
 import os
-import socket
 import struct
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import io
+    import socket
 
 # Parakeet and Silero VAD both take 16 kHz audio.
 SAMPLE_RATE = 16000
