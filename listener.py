@@ -160,7 +160,9 @@ def _type_turn(
         return _send(b"\r"), None
     if hold_said or config.SUBMIT_SILENCE_MS <= 0:
         return True, None
-    if text or enter_due is not None:
+    # A short turn alone, such as "Okay.", gets no Enter; it joins the Enter of
+    # longer text before it that still waits.
+    if len(text) >= config.MIN_SUBMIT_CHARS or enter_due is not None:
         return True, turn_end + _submit_wait_s()
     return True, None
 

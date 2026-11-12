@@ -70,6 +70,8 @@ The phrase does not reach Claude either. Your next voice input again submits
 after `SUBMIT_SILENCE_MS` and reacts to the submit keyword and the hold phrase
 as before. Change the phrase via `HOLD_PHRASE` in `config.py`.  
 Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.  
+Messages shorter than `MIN_SUBMIT_CHARS`, 6 characters by default, are not
+submitted after the silence; say the submit keyword or press Enter.  
 Pause listening by saying the pause phrase ("stop listening" by default) as the
 last words of your message. Press `Ctrl+\` to resume. Change the phrase via
 `PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  

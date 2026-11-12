@@ -34,6 +34,12 @@ SUBMIT_KEYWORD = "roger"
 # SUBMIT_KEYWORD submits, and turns pile up in the prompt field until then.
 SUBMIT_SILENCE_MS = 3400
 
+# Listener setting. A turn with fewer characters than this, such as "Okay" or a
+# misheard noise, gets no Enter after SUBMIT_SILENCE_MS; it stays in the prompt
+# field. It is still sent along if longer text before it waits for its Enter.
+# The submit keyword and the Enter key still submit it.
+MIN_SUBMIT_CHARS = 6
+
 # Listener setting. A turn that ends with this phrase gets no Enter after
 # SUBMIT_SILENCE_MS, however long the silence lasts. The next turn without the
 # phrase submits everything typed so far. The phrase itself is not typed. Case
