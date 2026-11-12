@@ -34,10 +34,18 @@ SUBMIT_KEYWORD = "roger"
 # SUBMIT_KEYWORD submits, and turns pile up in the prompt field until then.
 SUBMIT_SILENCE_MS = 3400
 
+# Listener setting. Drop a turn with less speech than this before it reaches
+# Parakeet, so nothing is typed. Speech counts in 32 ms Silero frames, so use a
+# multiple of 32. Other values round down, e.g. 400 acts as 384. 0 keeps every
+# turn.
+# See also MIN_SUBMIT_CHARS.
+MIN_SPEECH_MS = 416
+
 # Listener setting. A turn with fewer characters than this, such as "Okay" or a
 # misheard noise, gets no Enter after SUBMIT_SILENCE_MS; it stays in the prompt
 # field. It is still sent along if longer text before it waits for its Enter.
 # The submit keyword and the Enter key still submit it. 0 disables it.
+# See also MIN_SPEECH_MS.
 MIN_SUBMIT_CHARS = 6
 
 # Listener setting. A turn that ends with this phrase gets no Enter after

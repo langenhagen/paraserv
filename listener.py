@@ -10,6 +10,11 @@ with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to Claude.
 A turn that ends with config.CLEAR_PHRASE clears the whole prompt field with
 Ctrl+U instead.
 
+Two settings ignore short utterances. config.MIN_SPEECH_MS drops a turn with
+too little speech before transcription (vad.py), so nothing is typed.
+config.MIN_SUBMIT_CHARS keeps a short transcript that passed it from
+triggering the Enter after config.SUBMIT_SILENCE_MS.
+
 While a turn is still running, every config.PARTIAL_SECONDS of new speech
 re-transcribes the audio so far and shows it in the prompt field as a
 provisional transcript: backspace over the previous provisional text, then
@@ -218,7 +223,9 @@ def _any_session_running() -> bool:
 
 def listen() -> None:
     """Record, segment, transcribe, and inject until no pclaude runs anymore."""
-    segmenter = SpeechSegmenter(config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS)
+    segmenter = SpeechSegmenter(
+        config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS, config.MIN_SPEECH_MS
+    )
     pending_chunks: list[np.ndarray] = []
     lock = threading.Lock()
     partial_shown = ""
@@ -255,7 +262,9 @@ def listen() -> None:
                 config_mtime = mtime
                 if _reload_config():
                     segmenter.set_limits(
-                        config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS
+                        config.MIN_SILENCE_MS,
+                        config.MAX_SEGMENT_SECONDS,
+                        config.MIN_SPEECH_MS,
                     )
                     partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
             with lock:
@@ -298,6 +307,13 @@ def listen() -> None:
                         break
 
                 current = segmenter.current_segment
+                if current is None and partial_shown:
+                    # The segmenter dropped the turn for too little speech.
+                    if not _clear_partial(partial_shown):
+                        logger.info("no pclaude running; exiting")
+                        return
+                    partial_shown = ""
+                    partial_checked_samples = 0
                 if (
                     not paused
                     and config.PARTIAL_SECONDS > 0

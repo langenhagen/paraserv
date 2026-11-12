@@ -71,8 +71,11 @@ The phrase does not reach Claude either. Your next voice input again submits
 after `SUBMIT_SILENCE_MS` and reacts to the submit keyword and the hold phrase
 as before. Change the phrase via `HOLD_PHRASE` in `config.py`.  
 Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.  
-Messages shorter than `MIN_SUBMIT_CHARS`, 6 characters by default, are not
-submitted after the silence; say the submit keyword or press Enter.  
+Short utterances are ignored in two steps. A turn with less than
+`MIN_SPEECH_MS` of speech, 416 ms by default, is dropped before transcription.
+A transcript shorter than `MIN_SUBMIT_CHARS`, 6 characters by default, is typed
+but not submitted after the silence. To send this off, say the submit keyword
+or press Enter.  
 To start over, end your message with the clear phrase ("clear message" by
 default). It clears the whole prompt field; `Ctrl+Y` brings the text back.
 Change the phrase via `CLEAR_PHRASE` in `config.py`.  

@@ -4,8 +4,11 @@ Feed microphone samples in any block size. A segment is finished once a pause
 of --min-silence-ms follows speech, or once it reaches --max-segment-seconds.
 Transcribing whole segments instead of fixed chunks keeps words and sentences
 intact. A short pre-roll before the detected speech start keeps first syllables.
+A segment with less speech than min_speech_ms is dropped, as in Silero's
+reference code. The listener sets it from config.MIN_SPEECH_MS.
 """
 
+import logging
 from collections import deque
 from pathlib import Path
 
@@ -21,6 +24,8 @@ VAD_FILE = "silero_vad.onnx"
 FRAME_SAMPLES = 512
 CONTEXT_SAMPLES = 64
 PRE_ROLL_FRAMES = 8  # 256 ms
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_vad_path() -> Path:
@@ -41,9 +46,10 @@ class SpeechSegmenter:
         self,
         min_silence_ms: int,
         max_segment_seconds: float,
+        min_speech_ms: int = 0,
         threshold: float = 0.5,
     ) -> None:
-        """Load Silero VAD and set the pause and length limits of a segment."""
+        """Load Silero VAD and set the pause, length, and speech limits of a segment."""
         # One thread: the default thread pool busy-waits between the ~31 tiny
         # runs per second and burns ~30% of a core; one thread uses ~1%.
         options = rt.SessionOptions()
@@ -57,7 +63,7 @@ class SpeechSegmenter:
         self._threshold = threshold
         # Hysteresis as in Silero's reference code: speech ends below this.
         self._neg_threshold = threshold - 0.15
-        self.set_limits(min_silence_ms, max_segment_seconds)
+        self.set_limits(min_silence_ms, max_segment_seconds, min_speech_ms)
 
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
         self._context = np.zeros(CONTEXT_SAMPLES, dtype=np.float32)
@@ -65,15 +71,19 @@ class SpeechSegmenter:
         self._pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_FRAMES)
         self._segment: list[np.ndarray] = []
         self._silent_frames = 0
+        self._speech_frames = 0
 
-    def set_limits(self, min_silence_ms: int, max_segment_seconds: float) -> None:
-        """Set the pause that ends a segment and the maximum segment length."""
+    def set_limits(
+        self, min_silence_ms: int, max_segment_seconds: float, min_speech_ms: int = 0
+    ) -> None:
+        """Set the pause that ends a segment, its maximum length, and minimum speech."""
         self._min_silence_frames = max(
             1, min_silence_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES
         )
         self._max_segment_frames = max(
             1, int(max_segment_seconds * SAMPLE_RATE / FRAME_SAMPLES)
         )
+        self._min_speech_frames = min_speech_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES
 
     @property
     def current_segment(self) -> np.ndarray | None:
@@ -97,6 +107,7 @@ class SpeechSegmenter:
             return None
         segment = np.concatenate([*self._segment, self._unframed])
         self._segment = []
+        self._speech_frames = 0
         self._unframed = np.empty(0, dtype=np.float32)
         return segment
 
@@ -108,11 +119,13 @@ class SpeechSegmenter:
                 self._segment = [*self._pre_roll, frame]
                 self._pre_roll.clear()
                 self._silent_frames = 0
+                self._speech_frames = 1
             else:
                 self._pre_roll.append(frame)
             return None
 
         self._segment.append(frame)
+        self._speech_frames += probability >= self._threshold
         self._silent_frames = (
             self._silent_frames + 1 if probability < self._neg_threshold else 0
         )
@@ -121,7 +134,13 @@ class SpeechSegmenter:
             or len(self._segment) >= self._max_segment_frames
         ):
             segment = np.concatenate(self._segment)
+            speech_frames = self._speech_frames
             self._segment = []
+            self._speech_frames = 0
+            if speech_frames < self._min_speech_frames:
+                speech_ms = speech_frames * FRAME_SAMPLES * 1000 // SAMPLE_RATE
+                logger.info("dropped a turn with %d ms of speech", speech_ms)
+                return None
             return segment
         return None
 
