@@ -66,10 +66,11 @@ Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default
 To submit right away, say the submit keyword ("roger" by default) as the last
 word. The keyword itself does not reach Claude; it only presses Enter. Change
 the keyword via `SUBMIT_KEYWORD` in `config.py`.  
-To think longer, end your message with the hold phrase ("hold it" by default).
-The phrase does not reach Claude either. Your next voice input again submits
-after `SUBMIT_SILENCE_MS` and reacts to the submit keyword and the hold phrase
-as before. Change the phrase via `HOLD_PHRASE` in `config.py`.  
+If you want to think longer before sending off the message, end your message with
+the hold phrase ("hold it" by default). This hold phrase does not reach Claude
+either. Your next voice input again submits after `SUBMIT_SILENCE_MS` and reacts
+to the submit keyword and the hold phrase as before. Change the phrase via
+`HOLD_PHRASE` in `config.py`.  
 Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.  
 Short utterances are ignored in two steps. A turn with less than
 `MIN_SPEECH_MS` of speech, 416 ms by default, is dropped before transcription.
@@ -83,6 +84,11 @@ Pause listening by saying the pause phrase ("stop listening" by default) as the
 last words of your message. Press `Ctrl+\` to resume. Change the phrase via
 `PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  
 The listener reloads `config.py` on save.  
+`REPLACEMENTS` in `config.py` deletes fillers and fixes words that Parakeet
+writes wrongly.  
+Personal word replacements, such as your own fillers and work terms, go in
+`~/.config/paraserv/replacements.toml` as `"heard" = "replacement"` lines.
+They add to `REPLACEMENTS`, win on a clash, and reload on save.  
 After changing `DEVICE`, stop the server; the next turn starts a fresh one.
 
 ## How It Works

@@ -7,7 +7,7 @@ stopping the server with `parakeet_client.py --stop-server`; the next
 transcription starts a fresh one.
 
 The listener reloads this file when it changes, so a listener setting applies
-within about one poll interval after saving. If the file fails to load, the
+within about 5 seconds after saving. If the file fails to load, the
 listener logs the error and keeps the old settings.
 """
 
@@ -80,3 +80,38 @@ POLL_MS = 150
 # much new speech and show it in the prompt field as a provisional transcript,
 # replaced at the pause by the final one. 0 disables provisional transcripts.
 PARTIAL_SECONDS = 1.0
+
+# Listener setting. Phrases to replace in each turn before it is typed, as
+# "heard": "replacement".  Whole words, any case. An empty replacement deletes
+# the phrase. Every entry applies to every language.
+# Personal replacements you want to keep to yourself go in
+# ~/.config/paraserv/replacements.toml. With the format "heard" = "replacement";
+# it adds to this dict, wins on a clash, and is reloaded on save as well.
+REPLACEMENTS: dict[str, str] = {
+    # Fillers.
+    "um": "",
+    "uh": "",
+    "äh": "",
+    "ähm": "",
+    "hmm": "",
+    "Mm-.": "",
+    # Names that Parakeet writes wrongly.
+    "parasurf": "paraserv",
+    "paraserve": "paraserv",
+    "para kit": "Parakeet",
+    "parakit": "Parakeet",
+    "parachet": "Parakeet",
+    "p cloud": "pclaude",
+    "pcloud": "pclaude",
+    "p claude": "pclaude",
+    "p claud": "pclaude",
+    "p clawed": "pclaude",
+    "cloud code": "Claude Code",
+    "cloud haiku": "Claude Haiku",
+    "cloud hiq": "Claude Haiku",
+    "cloud conversation": "Claude conversation",
+    # Version numbers that Parakeet spells out.
+    "v two": "V2",
+    "v three": "V3",
+    "v four": "V4",
+}

@@ -32,6 +32,10 @@ The listener reloads config.py when the file changes, so listener settings
 apply without a restart. If the new config.py fails to load, the listener
 logs the error and keeps the old settings.
 
+Personal replacements live in USER_REPLACEMENTS_PATH, a TOML file of
+"heard" = "replacement" pairs that the listener reloads the same way. They
+add to config.REPLACEMENTS and win on a clash.
+
 pclaude starts the listener detached. A lock file ensures that at most one
 listener per user runs, so several pclaude sessions share one microphone. The
 listener exits once no pclaude is running.
@@ -49,6 +53,7 @@ import socket
 import sys
 import threading
 import time
+import tomllib
 from contextlib import suppress
 from pathlib import Path
 from typing import IO
@@ -71,6 +76,9 @@ from vad import SpeechSegmenter
 # Check this often whether any pclaude still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
 
+# Check this often whether config.py or the user replacements file changed.
+FILE_CHECK_INTERVAL_S = 5.0
+
 # The terminal's delete-previous-character keystroke, same as a real backspace.
 BACKSPACE = b"\x7f"
 
@@ -82,6 +90,12 @@ BACKSPACE = b"\x7f"
 CLEAR_PROMPT = b"\x15" * 50
 
 CONFIG_PATH = Path(config.__file__)
+
+# Optional per-machine replacements, outside the repository.
+USER_REPLACEMENTS_PATH = Path.home() / ".config" / "paraserv" / "replacements.toml"
+
+# Contents of USER_REPLACEMENTS_PATH; empty while the file is missing.
+user_replacements: dict[str, str] = {}
 
 logger = logging.getLogger("paraserv-listener")
 
@@ -97,6 +111,32 @@ def _reload_config() -> bool:
         return False
     logger.info("reloaded %s", CONFIG_PATH)
     return True
+
+
+def _mtime(path: Path) -> float | None:
+    """Return the modification time of path, or None if it does not exist."""
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return None
+
+
+def _reload_user_replacements() -> None:
+    """Load USER_REPLACEMENTS_PATH; on failure log the error and keep the old ones."""
+    global user_replacements
+    try:
+        with USER_REPLACEMENTS_PATH.open("rb") as file:
+            loaded = tomllib.load(file)
+    except FileNotFoundError:
+        loaded = {}
+    except Exception:
+        # Same as config.py: a typo while editing must not kill the listener.
+        logger.exception(
+            "cannot load %s; keeping the old replacements", USER_REPLACEMENTS_PATH
+        )
+        return
+    user_replacements = loaded
+    logger.info("loaded %d replacements from %s", len(loaded), USER_REPLACEMENTS_PATH)
 
 
 def _acquire_single_instance_lock() -> IO[str] | None:
@@ -152,6 +192,21 @@ def _send(data: bytes) -> bool:
     with sock:
         sock.sendall(data)
     return True
+
+
+def _apply_replacements(text: str) -> str:
+    """Apply config.REPLACEMENTS and the user file to text; an empty replacement deletes the phrase."""
+    replacements = {**config.REPLACEMENTS, **user_replacements}
+    for heard, replacement in sorted(
+        replacements.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        suffix = "" if replacement else r",?\s*"
+        pattern = rf"(?<!\w){re.escape(heard)}(?!\w){suffix}"
+        text = re.sub(
+            pattern, lambda _match, value=replacement: value, text, flags=re.IGNORECASE
+        )
+    text = re.sub(r"\s+([,.?!])", r"\1", text)
+    return text.strip()
 
 
 def _type_turn(
@@ -259,17 +314,27 @@ def listen() -> None:
         logger.info("listening")
         next_session_check = time.monotonic() + SESSION_CHECK_INTERVAL_S
         config_mtime = CONFIG_PATH.stat().st_mtime
+        _reload_user_replacements()
+        user_mtime = _mtime(USER_REPLACEMENTS_PATH)
+        next_file_check = time.monotonic() + FILE_CHECK_INTERVAL_S
         while True:
             sd.sleep(config.POLL_MS)
-            if (mtime := CONFIG_PATH.stat().st_mtime) != config_mtime:
-                config_mtime = mtime
-                if _reload_config():
-                    segmenter.set_limits(
-                        config.MIN_SILENCE_MS,
-                        config.MAX_SEGMENT_SECONDS,
-                        config.MIN_SPEECH_MS,
-                    )
-                    partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
+            if time.monotonic() >= next_file_check:
+                next_file_check = time.monotonic() + FILE_CHECK_INTERVAL_S
+                if (mtime := _mtime(USER_REPLACEMENTS_PATH)) != user_mtime:
+                    user_mtime = mtime
+                    _reload_user_replacements()
+                if (mtime := CONFIG_PATH.stat().st_mtime) != config_mtime:
+                    config_mtime = mtime
+                    if _reload_config():
+                        segmenter.set_limits(
+                            config.MIN_SILENCE_MS,
+                            config.MAX_SEGMENT_SECONDS,
+                            config.MIN_SPEECH_MS,
+                        )
+                        partial_audio_samples = int(
+                            config.PARTIAL_SECONDS * SAMPLE_RATE
+                        )
             with lock:
                 fresh = pending_chunks.copy()
                 pending_chunks.clear()
@@ -291,7 +356,7 @@ def listen() -> None:
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
-                    text = transcribe(segment)
+                    text = _apply_replacements(transcribe(segment))
                     logger.info("heard: %r", text)
                     pause_said = False
                     if config.PAUSE_PHRASE:
@@ -324,7 +389,7 @@ def listen() -> None:
                     and len(current) - partial_checked_samples >= partial_audio_samples
                 ):
                     partial_checked_samples = len(current)
-                    partial_text = transcribe(current)
+                    partial_text = _apply_replacements(transcribe(current))
                     if partial_text != partial_shown:
                         if not _update_partial(partial_shown, partial_text):
                             logger.info("no pclaude running; exiting")
