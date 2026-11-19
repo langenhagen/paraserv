@@ -62,33 +62,40 @@ In `pclaude`, speak and pause. Each spoken turn appears in the prompt field.
 | "clear message"  | Clear the whole message.                             |
 | "stop listening" | Pause listening, like `Ctrl+\`.                      |
 
-Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default.  
+Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default.
+Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.
+
 To submit right away, say the submit keyword ("roger" by default) as the last
 word. The keyword itself does not reach Claude; it only presses Enter. Change
-the keyword via `SUBMIT_KEYWORD` in `config.py`.  
+the keyword via `SUBMIT_KEYWORD` in `config.py`.
+
 If you want to think longer before sending off the message, end your message with
 the hold phrase ("hold it" by default). This hold phrase does not reach Claude
 either. Your next voice input again submits after `SUBMIT_SILENCE_MS` and reacts
 to the submit keyword and the hold phrase as before. Change the phrase via
-`HOLD_PHRASE` in `config.py`.  
-Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.  
+`HOLD_PHRASE` in `config.py`.
+
 Short utterances are ignored in two steps. A turn with less than
 `MIN_SPEECH_MS` of speech, 416 ms by default, is dropped before transcription.
 A transcript shorter than `MIN_SUBMIT_CHARS`, 6 characters by default, is typed
 but not submitted after the silence. To send this off, say the submit keyword
-or press Enter.  
+or press Enter.
+
 To start over, end your message with the clear phrase ("clear message" by
 default). It clears the whole prompt field; `Ctrl+Y` brings the text back.
-Change the phrase via `CLEAR_PHRASE` in `config.py`.  
+Change the phrase via `CLEAR_PHRASE` in `config.py`.
+
 Pause listening by saying the pause phrase ("stop listening" by default) as the
 last words of your message. Press `Ctrl+\` to resume. Change the phrase via
-`PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.  
-The listener reloads `config.py` on save.  
+`PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.
+
 `REPLACEMENTS` in `config.py` deletes fillers and fixes words that Parakeet
-writes wrongly.  
+writes wrongly.
 Personal word replacements, such as your own fillers and work terms, go in
 `~/.config/paraserv/replacements.toml` as `"heard" = "replacement"` lines.
-They add to `REPLACEMENTS`, win on a clash, and reload on save.  
+They add to `REPLACEMENTS`, win on a clash, and reload on save.
+
+The listener reloads `config.py` on save.
 After changing `DEVICE`, stop the server; the next turn starts a fresh one.
 
 ## How It Works
