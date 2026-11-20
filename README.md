@@ -71,7 +71,8 @@ In `pclaude`, speak and pause. Each spoken turn appears in the prompt field.
 Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default.
 Before it is sent, the listener backspaces over the text it typed and retypes it
 in cleaned form using the local `speech-to-prompt-compiler` model, the same way
-a provisional transcript is replaced. Text typed by hand is not touched.  
+a provisional transcript is replaced. Text typed by hand is not touched. After
+you press a key in `pclaude`, only speech typed after that key is cleaned.  
 To review the cleaned text before sending, end with the clean phrase ("clean it"
 by default). It cleans without sending and cancels a pending auto-submit. To
 bypass cleanup, end with the raw-send phrase ("send as is" by default).  

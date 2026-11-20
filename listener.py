@@ -13,7 +13,10 @@ silence, unless the last turn ends with config.HOLD_PHRASE. None of these
 phrases is sent to Claude. A turn that ends with config.CLEAR_PHRASE clears the
 whole prompt field with Ctrl+U. Cleaning uses the same backspace-and-retype
 write as provisional transcripts, so it replaces only listener-typed text; text
-typed by hand keeps its place.
+typed by hand keeps its place. The listener forgets the text it typed once the
+user presses a key in pclaude (KEYBOARD_ACTIVITY_PATH changes): the prompt may
+have been edited or submitted by hand, so only text typed after the last key
+is cleaned.
 
 Two settings ignore short utterances. config.MIN_SPEECH_MS drops a turn with
 too little speech before transcription (vad.py), so nothing is typed.
@@ -71,6 +74,7 @@ import config
 from parakeet_client import connect_or_start_server, transcribe
 from paraserv_protocol import (
     INJECT_SOCKET_GLOB,
+    KEYBOARD_ACTIVITY_PATH,
     LISTENER_LOCK_PATH,
     LISTENER_PAUSED_PATH,
     SAMPLE_RATE,
@@ -125,6 +129,14 @@ def _mtime(path: Path) -> float | None:
         return path.stat().st_mtime
     except FileNotFoundError:
         return None
+
+
+def _forget_if_typed(
+    composed: str, seen_mtime: float | None
+) -> tuple[str, float | None]:
+    """Return composed, or "" if the user pressed a key since seen_mtime, and the new mtime."""
+    mtime = _mtime(KEYBOARD_ACTIVITY_PATH)
+    return ("" if mtime != seen_mtime else composed), mtime
 
 
 def _reload_user_replacements() -> None:
@@ -371,6 +383,7 @@ def listen() -> None:
     partial_shown = ""
     # Text the listener has typed for the current prompt, cleaned on submit.
     composed = ""
+    keyboard_mtime = _mtime(KEYBOARD_ACTIVITY_PATH)
     partial_checked_samples = 0
     partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
     paused = False
@@ -448,6 +461,9 @@ def listen() -> None:
                             text,
                             config.PAUSE_PHRASE,
                         )
+                    composed, keyboard_mtime = _forget_if_typed(
+                        composed, keyboard_mtime
+                    )
                     running, enter_due, composed = _type_turn(
                         text,
                         turn_end,
@@ -492,6 +508,7 @@ def listen() -> None:
                 and segmenter.current_segment is None
             ):
                 enter_due = None
+                composed, keyboard_mtime = _forget_if_typed(composed, keyboard_mtime)
                 running, composed = _submit(composed, clean=True)
                 if not running:
                     logger.info("no pclaude running; exiting")

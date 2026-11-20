@@ -25,6 +25,10 @@ into Claude Code's prompt field; "\r" submits.
 While the marker file STATE_DIR/listener-paused exists, the listener discards
 the microphone audio. Ctrl+\ in pclaude creates or removes it; the
 listener creates it when it hears config.PAUSE_PHRASE.
+
+pclaude touches the marker file KEYBOARD_ACTIVITY_PATH whenever the user types
+a key. The listener compares its modification time to learn that the prompt
+field may have changed without it, by hand or with Enter.
 """
 
 import json
@@ -61,6 +65,7 @@ SERVER_LOG_PATH = STATE_DIR / "parakeet-server.log"
 LISTENER_LOCK_PATH = STATE_DIR / "listener.lock"
 LISTENER_LOG_PATH = STATE_DIR / "listener.log"
 LISTENER_PAUSED_PATH = STATE_DIR / "listener-paused"
+KEYBOARD_ACTIVITY_PATH = STATE_DIR / "keyboard-activity"
 INJECT_SOCKET_GLOB = "inject-*.sock"
 
 

@@ -12,6 +12,10 @@ Ctrl+\ pauses or resumes the listener for all pclaude sessions: it creates or
 removes the marker file STATE_DIR/listener-paused and does not reach Claude
 Code.
 
+Every other key the user types also touches the marker file
+STATE_DIR/keyboard-activity, so the listener knows the prompt field changed
+without it.
+
 Usage:
 
     pclaude.py [CLAUDE_ARGS...]     run claude with these arguments
@@ -35,6 +39,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from paraserv_protocol import (
+    KEYBOARD_ACTIVITY_PATH,
     LISTENER_LOG_PATH,
     LISTENER_PAUSED_PATH,
     ensure_state_dir,
@@ -50,6 +55,10 @@ INJECT_READ_TIMEOUT_S = 1.0
 # Ctrl+\ as a plain control byte, and as the CSI u sequence that terminals and
 # tmux send instead once Claude Code turns on extended key reporting.
 PAUSE_KEYS = (b"\x1c", b"\x1b[92;5u")
+
+# Focus reports that the terminal sends when its window gains or loses focus.
+# They arrive on standard input like keys, but nobody typed them.
+FOCUS_REPORTS = (b"\x1b[I", b"\x1b[O")
 
 
 def _write_all(fd: int, data: bytes) -> None:
@@ -86,6 +95,14 @@ def _take_pause_keys(data: bytes) -> bytes:
     return data
 
 
+def _note_keyboard_activity(data: bytes) -> None:
+    """Touch KEYBOARD_ACTIVITY_PATH if data holds typed keys, not just focus reports."""
+    for report in FOCUS_REPORTS:
+        data = data.replace(report, b"")
+    if data:
+        KEYBOARD_ACTIVITY_PATH.touch()
+
+
 def _read_inject(server: socket.socket) -> bytes:
     """Accept one inject connection and return everything it sent."""
     conn, _ = server.accept()
@@ -119,7 +136,9 @@ def _relay(master_fd: int, server: socket.socket) -> None:
         if stdin_fd in readable:
             data = os.read(stdin_fd, READ_SIZE)
             if data:
-                _write_all(master_fd, _take_pause_keys(data))
+                keys = _take_pause_keys(data)
+                _note_keyboard_activity(keys)
+                _write_all(master_fd, keys)
             else:
                 sources.remove(stdin_fd)
         if server in readable:
