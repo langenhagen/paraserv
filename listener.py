@@ -4,11 +4,16 @@ r"""Listen to the microphone and type each spoken turn into Claude Code.
 Silero VAD (vad.py) cuts the microphone stream at pauses of
 config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
 goes to the inject socket of the newest running pclaude.
-Enter follows right away if the turn ends with config.SUBMIT_KEYWORD, and
-otherwise after config.SUBMIT_SILENCE_MS of silence, unless the last turn ends
-with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to Claude.
-A turn that ends with config.CLEAR_PHRASE clears the whole prompt field with
-Ctrl+U instead.
+
+A turn that ends with config.CLEAN_PHRASE cleans the text typed by the listener
+with the local Ollama model and leaves the result in the prompt for review.
+config.SEND_RAW_PHRASE sends without cleaning. config.SUBMIT_KEYWORD cleans and
+sends right away. Otherwise Enter follows after config.SUBMIT_SILENCE_MS of
+silence, unless the last turn ends with config.HOLD_PHRASE. None of these
+phrases is sent to Claude. A turn that ends with config.CLEAR_PHRASE clears the
+whole prompt field with Ctrl+U. Cleaning uses the same backspace-and-retype
+write as provisional transcripts, so it replaces only listener-typed text; text
+typed by hand keeps its place.
 
 Two settings ignore short utterances. config.MIN_SPEECH_MS drops a turn with
 too little speech before transcription (vad.py), so nothing is typed.
@@ -59,6 +64,7 @@ from pathlib import Path
 from typing import IO
 
 import numpy as np
+import ollama
 import sounddevice as sd
 
 import config
@@ -209,35 +215,48 @@ def _apply_replacements(text: str) -> str:
     return text.strip()
 
 
-def _type_turn(
-    text: str, turn_end: float, enter_due: float | None
-) -> tuple[bool, float | None]:
-    """Type a finished turn into the newest pclaude and decide when Enter follows.
+def _clean(text: str) -> str:
+    """Return text rewritten by Ollama, or the original when cleaning fails."""
+    if not config.CLEANER_ENABLED or not text.strip():
+        return text
+    try:
+        response = ollama.generate(
+            model=config.CLEANER_MODEL,
+            prompt=text,
+            think=False,
+            stream=False,
+        )
+    # pylint: disable-next=broad-exception-caught
+    except Exception as error:  # noqa: BLE001 - any Ollama error must keep the text
+        # A failed cleanup must not lose the message.
+        logger.warning("cleaner failed: %s", error)
+        return text
+    return response["response"].strip() or text
 
-    Return False first if no pclaude is running. Return as second value when to
-    press Enter for the typed text, or None if nothing waits for Enter.
+
+def _rewrite_typed(composed: str) -> tuple[bool, str]:
+    """Replace listener-typed text with its cleaned version.
+
+    Uses the same backspace-and-retype write as _update_partial, so text typed
+    by hand is not touched. Returns the new composed text for later turns.
     """
-    if config.CLEAR_PHRASE:
-        text, clear_said = _strip_trailing_phrase(text, config.CLEAR_PHRASE)
-        if clear_said:
-            return _send(CLEAR_PROMPT), None
-    submit_said = hold_said = False
-    if config.SUBMIT_KEYWORD:
-        text, submit_said = _strip_trailing_phrase(text, config.SUBMIT_KEYWORD)
-    if config.HOLD_PHRASE and not submit_said:
-        text, hold_said = _strip_trailing_phrase(text, config.HOLD_PHRASE)
-    if text and not _send(f"{text} ".encode()):
-        return False, None
-    if submit_said:
-        time.sleep(config.SUBMIT_DELAY_S)
-        return _send(b"\r"), None
-    if hold_said or config.SUBMIT_SILENCE_MS <= 0:
-        return True, None
-    # A short turn alone, such as "Okay.", gets no Enter; it joins the Enter of
-    # longer text before it that still waits.
-    if (text and len(text) >= config.MIN_SUBMIT_CHARS) or enter_due is not None:
-        return True, turn_end + _submit_wait_s()
-    return True, None
+    cleaned = _clean(composed)
+    if not cleaned or cleaned == composed:
+        return True, composed
+    rewritten = f"{cleaned} "
+    if not _send(BACKSPACE * len(composed) + rewritten.encode()):
+        return False, composed
+    logger.info("cleaned: %r", rewritten)
+    return True, rewritten
+
+
+def _submit(composed: str, *, clean: bool) -> tuple[bool, str]:
+    """Send Enter, optionally replacing listener-typed text with cleaned text."""
+    if clean:
+        running, composed = _rewrite_typed(composed)
+        if not running:
+            return False, composed
+    return _send(b"\r"), ""
 
 
 def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
@@ -254,10 +273,71 @@ def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
     return text[: match.start()], True
 
 
+def _take_command(text: str) -> tuple[str, str | None]:
+    """Strip a trailing spoken command; return the rest and its action name."""
+    if config.CLEAR_PHRASE:
+        text, clear_said = _strip_trailing_phrase(text, config.CLEAR_PHRASE)
+        if clear_said:
+            return text, "clear"
+    for phrase, action in (
+        (config.CLEAN_PHRASE, "clean"),
+        (config.SEND_RAW_PHRASE, "raw"),
+        (config.SUBMIT_KEYWORD, "submit"),
+        (config.HOLD_PHRASE, "hold"),
+    ):
+        if not phrase:
+            continue
+        text, said = _strip_trailing_phrase(text, phrase)
+        if said:
+            return text, action
+    return text, None
+
+
 def _submit_wait_s() -> float:
     """Return how long after a turn ends Enter follows without the submit keyword."""
     extra_silence_s = (config.SUBMIT_SILENCE_MS - config.MIN_SILENCE_MS) / 1000
     return max(config.SUBMIT_DELAY_S, extra_silence_s)
+
+
+def _type_turn(
+    text: str,
+    turn_end: float,
+    enter_due: float | None,
+    composed: str,
+) -> tuple[bool, float | None, str]:
+    """Type a finished turn and decide what follows.
+
+    Returns whether pclaude is running, when Enter is due, and the text the
+    listener has typed for the current prompt.
+    """
+    text, action = _take_command(text)
+    if action == "clear":
+        return _send(CLEAR_PROMPT), None, ""
+
+    if text:
+        typed = f"{text} "
+        if not _send(typed.encode()):
+            return False, None, composed
+        composed += typed
+
+    if action == "clean":
+        running, composed = _rewrite_typed(composed)
+        return running, None, composed
+    if action in ("raw", "submit"):
+        time.sleep(config.SUBMIT_DELAY_S)
+        running, composed = _submit(composed, clean=action == "submit")
+        return running, None, composed
+
+    # A short turn alone, such as "Okay.", gets no Enter; it joins the Enter of
+    # longer text before it that still waits.
+    due = None
+    if (
+        not action
+        and config.SUBMIT_SILENCE_MS > 0
+        and ((text and len(text) >= config.MIN_SUBMIT_CHARS) or enter_due is not None)
+    ):
+        due = turn_end + _submit_wait_s()
+    return True, due, composed
 
 
 def _clear_partial(shown: str) -> bool:
@@ -282,11 +362,15 @@ def _any_session_running() -> bool:
 def listen() -> None:
     """Record, segment, transcribe, and inject until no pclaude runs anymore."""
     segmenter = SpeechSegmenter(
-        config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS, config.MIN_SPEECH_MS
+        config.MIN_SILENCE_MS,
+        config.MAX_SEGMENT_SECONDS,
+        config.MIN_SPEECH_MS,
     )
     pending_chunks: list[np.ndarray] = []
     lock = threading.Lock()
     partial_shown = ""
+    # Text the listener has typed for the current prompt, cleaned on submit.
+    composed = ""
     partial_checked_samples = 0
     partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
     paused = False
@@ -361,9 +445,15 @@ def listen() -> None:
                     pause_said = False
                     if config.PAUSE_PHRASE:
                         text, pause_said = _strip_trailing_phrase(
-                            text, config.PAUSE_PHRASE
+                            text,
+                            config.PAUSE_PHRASE,
                         )
-                    running, enter_due = _type_turn(text, turn_end, enter_due)
+                    running, enter_due, composed = _type_turn(
+                        text,
+                        turn_end,
+                        enter_due,
+                        composed,
+                    )
                     if not running:
                         logger.info("no pclaude running; exiting")
                         return
@@ -402,7 +492,8 @@ def listen() -> None:
                 and segmenter.current_segment is None
             ):
                 enter_due = None
-                if not _send(b"\r"):
+                running, composed = _submit(composed, clean=True)
+                if not running:
                     logger.info("no pclaude running; exiting")
                     return
             if time.monotonic() >= next_session_check:

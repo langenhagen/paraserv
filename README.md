@@ -42,6 +42,10 @@ sudo ln -sf "$PWD/pclaude.sh" /usr/local/bin/pclaude  # link the CLI so you can 
 On macOS, the terminal app needs microphone access, see System Settings >
 Privacy & Security > Microphone.
 
+Prompt cleanup needs a running Ollama server and the `speech-to-prompt-compiler`
+model installed locally. Check with `ollama list`; set `CLEANER_ENABLED = False`
+in `config.py` to send spoken messages without cleanup.
+
 ## Usage
 
 ```bash
@@ -54,27 +58,30 @@ printf 'hello' | nc -U ~/.cache/paraserv/inject-<pid>.sock  # type into pclaude 
 
 In `pclaude`, speak and pause. Each spoken turn appears in the prompt field.
 
-| Key or word      | Effect                                               |
-| ---------------- | ---------------------------------------------------- |
-| `Ctrl+\`         | Pause or resume listening in all `pclaude` sessions. |
-| "roger"          | Submit the spoken message to Claude right away.      |
-| "hold it"        | Wait for more speech before submitting.              |
-| "clear message"  | Clear the whole message.                             |
-| "stop listening" | Pause listening, like `Ctrl+\`.                      |
+| Key or word      | Effect                                                    |
+| ---------------- | --------------------------------------------------------- |
+| `Ctrl+\`         | Pause or resume listening in all `pclaude` sessions.      |
+| "clean it"       | Clean the spoken text with Ollama; leave it in the field. |
+| "send as is"     | Submit the spoken text without cleaning it.               |
+| "roger"          | Clean the spoken text and submit it right away.           |
+| "hold it"        | Wait for more speech before submitting.                   |
+| "clear message"  | Clear the whole message.                                  |
+| "stop listening" | Pause listening, like `Ctrl+\`.                           |
 
 Your message is submitted after `SUBMIT_SILENCE_MS` of silence, 3.4 s by default.
-Set `SUBMIT_SILENCE_MS = 0` to submit only with the submit keyword.
-
-To submit right away, say the submit keyword ("roger" by default) as the last
-word. The keyword itself does not reach Claude; it only presses Enter. Change
-the keyword via `SUBMIT_KEYWORD` in `config.py`.
-
-If you want to think longer before sending off the message, end your message with
-the hold phrase ("hold it" by default). This hold phrase does not reach Claude
-either. Your next voice input again submits after `SUBMIT_SILENCE_MS` and reacts
-to the submit keyword and the hold phrase as before. Change the phrase via
-`HOLD_PHRASE` in `config.py`.
-
+Before it is sent, the listener backspaces over the text it typed and retypes it
+in cleaned form using the local `speech-to-prompt-compiler` model, the same way
+a provisional transcript is replaced. Text typed by hand is not touched.  
+To review the cleaned text before sending, end with the clean phrase ("clean it"
+by default). It cleans without sending and cancels a pending auto-submit. To
+bypass cleanup, end with the raw-send phrase ("send as is" by default).  
+To submit right away with cleanup, say the submit keyword ("roger" by default)
+as the last word. Change these phrases via `CLEAN_PHRASE`, `SEND_RAW_PHRASE`, and
+`SUBMIT_KEYWORD` in `config.py`. None of them reaches Claude.  
+To think longer, end your message with the hold phrase ("hold it" by default).
+Your next voice input again submits after `SUBMIT_SILENCE_MS` and reacts to the
+phrases as before. Change it via `HOLD_PHRASE` in `config.py`.  
+Set `SUBMIT_SILENCE_MS = 0` to submit only with a spoken phrase.  
 Short utterances are ignored in two steps. A turn with less than
 `MIN_SPEECH_MS` of speech, 416 ms by default, is dropped before transcription.
 A transcript shorter than `MIN_SUBMIT_CHARS`, 6 characters by default, is typed
@@ -107,10 +114,16 @@ pauses, has the server transcribe each turn, and sends the transcript to the
 newest running `pclaude`. While a turn runs, a provisional transcript shows in
 the prompt field; the final transcript replaces it at the pause.
 
-All programs talk over Unix domain sockets: file-system paths that only the
-current user can open, with no TCP port and no network exposure. The sockets,
-lock files, and log files live in `$XDG_RUNTIME_DIR/paraserv/` on Linux and in
-`~/.cache/paraserv/` on macOS.
+On a spoken submit, the listener sends the current text to Ollama with thinking
+disabled, backspaces over the text it typed, and types the cleaned text in its
+place. It then sends Enter, or leaves the cleaned text in place for a clean-only
+command. A raw-send command skips the cleaner. If Ollama fails, the original
+text stays in the prompt and a warning goes to the listener log.
+
+The listener talks to Ollama over its local HTTP API. The other programs talk
+over Unix domain sockets: file-system paths that only the current user can open,
+with no TCP port. The sockets, lock files, and log files live in
+`$XDG_RUNTIME_DIR/paraserv/` on Linux and in `~/.cache/paraserv/` on macOS.
 
 `pclaude` starts the listener detached from the terminal; the listener starts
 the server the same way if no server listens. Lock files guarantee at most one

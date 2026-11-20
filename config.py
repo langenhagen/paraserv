@@ -22,16 +22,28 @@ MIN_SILENCE_MS = 1500
 # Listener setting. Cut a turn at this length even without a pause.
 MAX_SEGMENT_SECONDS = 30.0
 
-# Listener setting. A turn that ends with this word submits the prompt to
-# Claude Code right away, without waiting for SUBMIT_SILENCE_MS. The keyword
-# itself is not sent to Claude, and a turn of only this word just presses
-# Enter. Case and trailing punctuation do not matter. "" disables it.
+# Listener setting. A turn that ends with this word cleans the listener-typed
+# text with Ollama and submits it right away, without waiting for
+# SUBMIT_SILENCE_MS. The keyword itself is not sent to Claude, and a turn of
+# only this word just submits. Case and trailing punctuation do not matter. ""
+# disables it.
 SUBMIT_KEYWORD: str = "roger"
+
+# Listener setting. A turn that ends with this phrase cleans the listener-typed
+# text but leaves it in the prompt field for review, without submitting and
+# without an auto-submit from earlier turns. The phrase itself is not typed.
+# Case and punctuation do not matter. "" disables it.
+CLEAN_PHRASE: str = "clean it"
+
+# Listener setting. A turn that ends with this phrase submits immediately
+# without cleaning. The phrase itself is not typed. Case and punctuation do
+# not matter. "" disables it.
+SEND_RAW_PHRASE: str = "send as is"
 
 # Listener setting. Submit the prompt after this much silence since your last
 # word. Each turn is typed after MIN_SILENCE_MS already; speaking again before
-# SUBMIT_SILENCE_MS adds to the same prompt. 0 disables it, so only
-# SUBMIT_KEYWORD submits, and turns pile up in the prompt field until then.
+# SUBMIT_SILENCE_MS adds to the same prompt. 0 disables it, so only a spoken
+# submit phrase submits, and turns pile up in the prompt field until then.
 SUBMIT_SILENCE_MS = 3400
 
 # Listener setting. Drop a turn with less speech than this before it reaches
@@ -115,3 +127,12 @@ REPLACEMENTS: dict[str, str] = {
     "v three": "V3",
     "v four": "V4",
 }
+
+# Listener setting. Before a submit, backspace over the text the listener typed
+# and retype it in cleaned form using the local Ollama model. With this off,
+# submits go through unchanged and the clean phrase is ignored.
+CLEANER_ENABLED = True
+
+# Listener setting. Ollama model used to clean the prompt. It must already exist
+# locally; see the README.
+CLEANER_MODEL = "speech-to-prompt-compiler:latest"
