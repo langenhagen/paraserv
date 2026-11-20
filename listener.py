@@ -107,6 +107,12 @@ USER_REPLACEMENTS_PATH = Path.home() / ".config" / "paraserv" / "replacements.to
 # Contents of USER_REPLACEMENTS_PATH; empty while the file is missing.
 user_replacements: dict[str, str] = {}
 
+# Every submitted message is appended to these three logs in ~/Downloads.
+# timings.txt holds the cleaner run time in milliseconds, or "-" when no model ran.
+SPOKEN_LOG_PATH = Path.home() / "Downloads" / "spoken.txt"
+CLEANED_LOG_PATH = Path.home() / "Downloads" / "cleaned.txt"
+TIMINGS_LOG_PATH = Path.home() / "Downloads" / "timings.txt"
+
 logger = logging.getLogger("paraserv-listener")
 
 
@@ -227,10 +233,37 @@ def _apply_replacements(text: str) -> str:
     return text.strip()
 
 
-def _clean(text: str) -> str:
-    """Return text rewritten by Ollama, or the original when cleaning fails."""
+def _append_log(path: Path, text: str) -> None:
+    """Append text as its own paragraph, leaving a blank line after it."""
+    message = text.strip()
+    if message:
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(f"{message}\n\n")
+
+
+def _log_message(original: str, cleaned: str, millis: float | None) -> None:
+    """Write a message's original text, cleaned text, and cleaner time to the log files.
+
+    millis is None when no cleaner model ran; its timings line is then "-".
+    Logging must never interrupt dictation, so a failed write is only a warning.
+    """
+    timing = "-" if millis is None else f"{millis:.0f} ms"
+    try:
+        _append_log(SPOKEN_LOG_PATH, original)
+        _append_log(CLEANED_LOG_PATH, cleaned)
+        _append_log(TIMINGS_LOG_PATH, timing)
+    except OSError as error:
+        logger.warning("cannot write message logs: %s", error)
+
+
+def _clean(text: str) -> tuple[str, float | None]:
+    """Return text rewritten by Ollama and the run time in milliseconds.
+
+    The original text comes back with None when cleaning is off or fails.
+    """
     if not config.CLEANER_ENABLED or not text.strip():
-        return text
+        return text, None
+    start = time.perf_counter()
     try:
         response = ollama.generate(
             model=config.CLEANER_MODEL,
@@ -242,8 +275,9 @@ def _clean(text: str) -> str:
     except Exception as error:  # noqa: BLE001 - any Ollama error must keep the text
         # A failed cleanup must not lose the message.
         logger.warning("cleaner failed: %s", error)
-        return text
-    return response["response"].strip() or text
+        return text, None
+    millis = (time.perf_counter() - start) * 1000
+    return response["response"].strip() or text, millis
 
 
 def _rewrite_typed(composed: str) -> tuple[bool, str]:
@@ -252,7 +286,8 @@ def _rewrite_typed(composed: str) -> tuple[bool, str]:
     Uses the same backspace-and-retype write as _update_partial, so text typed
     by hand is not touched. Returns the new composed text for later turns.
     """
-    cleaned = _clean(composed)
+    cleaned, millis = _clean(composed)
+    _log_message(composed, cleaned, millis)
     if not cleaned or cleaned == composed:
         return True, composed
     rewritten = f"{cleaned} "
@@ -268,7 +303,10 @@ def _submit(composed: str, *, clean: bool) -> tuple[bool, str]:
         running, composed = _rewrite_typed(composed)
         if not running:
             return False, composed
-    return _send(b"\r"), ""
+    running = _send(b"\r")
+    if running and not clean:
+        _log_message(composed, composed, None)
+    return running, ""
 
 
 def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
