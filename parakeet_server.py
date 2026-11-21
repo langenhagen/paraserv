@@ -3,7 +3,7 @@
 
 Loads NVIDIA Parakeet TDT 0.6B v3 once, then serves requests on a Unix domain
 socket, one at a time. See paraserv_protocol.py for the socket location and
-the message format, and config.DEVICE for the backend.
+the message format, and settings.DEVICE for the backend.
 
 A lock file ensures that at most one server per user runs. A second server
 exits with code 0 right away, without loading the model.
@@ -36,7 +36,7 @@ from typing import IO, cast
 
 import numpy as np
 
-import config
+import settings
 from paraserv_protocol import (
     SAMPLE_RATE,
     SERVER_LOCK_PATH,
@@ -184,7 +184,7 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
     logger.info("loading model (log file for started servers: %s)", SERVER_LOG_PATH)
-    transcribe = _load_transcriber(config.DEVICE)
+    transcribe = _load_transcriber(settings.DEVICE)
     # Run the model once, so that the first real request is as fast as later ones.
     transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32))
 

@@ -1,15 +1,16 @@
-"""User settings for the Parakeet server and the microphone listener.
+"""Example configuration for the Parakeet server and the microphone listener.
 
-The comment on each setting says which program reads it.
+Copy this file to config.py and edit that copy. config.py is gitignored, so
+your settings, replacements, and keyphrases stay on this machine. The listener
+reloads config.py on save; the server reads its setting once at start. Apply a
+server setting by stopping the server with `parakeet_client.py --stop-server`;
+the next transcription starts a fresh one.
 
-The server reads its setting once at start. Apply a server setting by
-stopping the server with `parakeet_client.py --stop-server`; the next
-transcription starts a fresh one.
-
-The listener reloads this file when it changes, so a listener setting applies
-within about 5 seconds after saving. If the file fails to load, the
-listener logs the error and keeps the old settings.
+Every uppercase name here becomes an attribute of settings.py, which is what
+the programs read.
 """
+
+import logging
 
 # Server setting. Parakeet backend. "cpu": int8 ONNX via onnx-asr (0.7 GB
 # download). "gpu": MLX via mlx-audio (2.5 GB download).
@@ -82,11 +83,8 @@ POLL_MS = 150
 PARTIAL_SECONDS = 1.0
 
 # Listener setting. Phrases to replace in each turn before it is typed, as
-# "heard": "replacement".  Whole words, any case. An empty replacement deletes
+# "heard": "replacement". Whole words, any case. An empty replacement deletes
 # the phrase. Every entry applies to every language.
-# Personal replacements you want to keep to yourself go in
-# ~/.config/paraserv/replacements.toml. With the format "heard" = "replacement";
-# it adds to this dict, wins on a clash, and is reloaded on save as well.
 REPLACEMENTS: dict[str, str] = {
     # Fillers.
     "um": "",
@@ -117,4 +115,18 @@ REPLACEMENTS: dict[str, str] = {
     "v two": "V2",
     "v three": "V3",
     "v four": "V4",
+}
+
+
+# Listener setting. Spoken commands. A turn ending with a phrase runs its
+# action instead of typing the phrase. Actions take no arguments. The longest
+# matching phrase wins, and a failing action is logged without stopping the
+# listener. Replace this example with your own phrase and action.
+def announce_keyphrase() -> None:
+    """Log a line when the example keyphrase is heard."""
+    logging.getLogger("paraserv-listener").info("example keyphrase")
+
+
+KEYPHRASES = {
+    "example phrase": announce_keyphrase,
 }

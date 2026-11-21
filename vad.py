@@ -7,7 +7,7 @@ of --min-silence-ms follows speech, or once it reaches --max-segment-seconds.
 Transcribing whole segments instead of fixed chunks keeps words and sentences
 intact. A short pre-roll before the detected speech start keeps first syllables.
 A segment with less speech than min_speech_ms is dropped, as in Silero's
-reference code. The listener sets it from config.MIN_SPEECH_MS.
+reference code. The listener sets it from settings.MIN_SPEECH_MS.
 """
 
 # huggingface_hub is loaded only when the VAD path is resolved.

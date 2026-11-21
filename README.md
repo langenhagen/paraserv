@@ -17,8 +17,8 @@ The project is structured as follows:
 ```
 .
 ├── autostart/              Optional launchd agent and systemd user service for the server.
-├── config.py               Settings; the listener reloads them on save.
-├── keyphrases.py           Spoken commands; the listener reloads them on save.
+├── config.py               Personal settings; gitignored, reloaded on save.
+├── config.sample.py        Documented template for config.py.
 ├── LICENSE                 License definition.
 ├── listener.py             Records the microphone and sends each spoken turn to the newest wrapper.
 ├── parakeet_client.py      Talks to the server; transcribes a WAV file or stops the server.
@@ -31,6 +31,7 @@ The project is structured as follows:
 ├── pty_agent.py            Shared pseudo-terminal wrapper for pclaude and popencode.
 ├── pyproject.toml          Project metadata and dependencies.
 ├── README.md               You are here now.
+├── settings.py             Loads config.py; the programs read settings.*.
 └── vad.py                  Cuts the microphone stream into spoken turns with Silero VAD.
 ```
 
@@ -41,6 +42,7 @@ The project is structured as follows:
 
 ```bash
 uv sync
+cp config.sample.py config.py                           # create your personal config (gitignored)
 sudo ln -sf "$PWD/pclaude.sh" /usr/local/bin/pclaude    # link the CLI so you can use it everywhere
 sudo ln -sf "$PWD/popencode.sh" /usr/local/bin/popencode
 ```
@@ -98,20 +100,19 @@ Pause listening by saying the pause phrase ("stop listening" by default) as the
 last words of your message. Press `Ctrl+\` to resume. Change the phrase via
 `PAUSE_PHRASE` in `config.py`. The pause holds across `pclaude` restarts.
 
-`REPLACEMENTS` in `config.py` deletes fillers and fixes words that Parakeet
-writes wrongly.
-Personal word replacements, such as your own fillers and work terms, go in
-`~/.config/paraserv/replacements.toml` as `"heard" = "replacement"` lines.
-They add to `REPLACEMENTS`, win on a clash, and reload on save.
+All settings live in `config.py`: timings, phrases, `REPLACEMENTS`, and
+`KEYPHRASES`. `REPLACEMENTS` deletes fillers and fixes words that Parakeet
+writes wrongly, as `"heard" = "replacement"` lines.
 
-Put your own spoken commands in `keyphrases.py` in the project root. The file
-defines zero-argument action functions and a `KEYPHRASES` dict that maps a
-phrase to its function. A turn ending with a phrase from that dict runs the
-action instead of typing the phrase. Case and punctuation do not matter, and
-the longest matching phrase wins.
+Put your own spoken commands in `KEYPHRASES` too. Define zero-argument action
+functions and map a phrase to each function; `config.sample.py` has an example.
+A turn ending with a phrase from that dict runs the action instead of typing the
+phrase. Case and punctuation do not matter, and the longest matching phrase
+wins.
 
-The listener reloads `config.py` and `keyphrases.py` on save.
-After changing `DEVICE`, stop the server; the next turn starts a fresh one.
+The listener reloads `config.py` on save. If it fails to load, the listener logs
+the error and keeps the previous values. After changing `DEVICE`, stop the
+server; the next turn starts a fresh one.
 
 ## How It Works
 

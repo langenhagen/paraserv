@@ -24,7 +24,7 @@ into the wrapped CLI's prompt field; "\r" submits.
 
 While the marker file STATE_DIR/listener-paused exists, the listener discards
 the microphone audio. Ctrl+\ in pclaude or popencode creates or removes it; the
-listener creates it when it hears config.PAUSE_PHRASE.
+listener creates it when it hears settings.PAUSE_PHRASE.
 """
 
 import json

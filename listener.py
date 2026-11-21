@@ -2,43 +2,40 @@
 r"""Listen to the microphone and type each spoken turn into the active CLI.
 
 Silero VAD (vad.py) cuts the microphone stream at pauses of
-config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
+settings.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
 goes to the inject socket of the newest running pclaude or popencode.
-Enter follows right away if the turn ends with config.SUBMIT_KEYWORD, and
-otherwise after config.SUBMIT_SILENCE_MS of silence, unless the last turn ends
-with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to the CLI.
-A turn that ends with config.CLEAR_PHRASE clears the whole prompt field with
+Enter follows right away if the turn ends with settings.SUBMIT_KEYWORD, and
+otherwise after settings.SUBMIT_SILENCE_MS of silence, unless the last turn ends
+with settings.HOLD_PHRASE. Neither the keyword nor the phrase is sent to the CLI.
+A turn that ends with settings.CLEAR_PHRASE clears the whole prompt field with
 Ctrl+U instead.
 
-Two settings ignore short utterances. config.MIN_SPEECH_MS drops a turn with
+Two settings ignore short utterances. settings.MIN_SPEECH_MS drops a turn with
 too little speech before transcription (vad.py), so nothing is typed.
-config.MIN_SUBMIT_CHARS keeps a short transcript that passed it from
-triggering the Enter after config.SUBMIT_SILENCE_MS.
+settings.MIN_SUBMIT_CHARS keeps a short transcript that passed it from
+triggering the Enter after settings.SUBMIT_SILENCE_MS.
 
-While a turn is still running, every config.PARTIAL_SECONDS of new speech
+While a turn is still running, every settings.PARTIAL_SECONDS of new speech
 re-transcribes the audio so far and shows it in the prompt field as a
 provisional transcript: backspace over the previous provisional text, then
 type the new one. The pause at the end of the turn replaces it with the
-final transcript the same way. config.PARTIAL_SECONDS = 0 disables
+final transcript the same way. settings.PARTIAL_SECONDS = 0 disables
 provisional transcripts.
 
 While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
 transcript. Ctrl+\ in pclaude or popencode creates or removes the marker file.
-A turn that ends with config.PAUSE_PHRASE creates it: the listener types the
+A turn that ends with settings.PAUSE_PHRASE creates it: the listener types the
 text before the phrase as usual, drops the phrase, and pauses.
 
-The listener reloads config.py when the file changes, so listener settings
-apply without a restart. If the new config.py fails to load, the listener
-logs the error and keeps the old settings.
+The listener reloads config.py when the file changes, so listener settings,
+replacements, and keyphrases apply without a restart. If the new config.py
+fails to load, the listener logs the error and keeps the old settings.
 
-A turn ending with a phrase in KEYPHRASES_PATH runs its action instead of
-typing the phrase. That file holds both the phrases and their functions, and
-the listener reloads it on save.
-
-Personal replacements live in USER_REPLACEMENTS_PATH, a TOML file of
-"heard" = "replacement" pairs that the listener reloads the same way. They
-add to config.REPLACEMENTS and win on a clash.
+All personal settings, replacements, and keyphrase actions live in the
+gitignored config.py next to this listener; config.sample.py documents them.
+A turn ending with a phrase from settings.KEYPHRASES runs its action instead
+of typing the phrase.
 
 pclaude and popencode start the listener detached. A lock file ensures that at
 most one listener per user runs, so several pclaude or popencode sessions share
@@ -50,23 +47,19 @@ Usage:
 """
 
 import fcntl
-import importlib
-import importlib.util
 import logging
 import re
 import socket
 import sys
 import threading
 import time
-import tomllib
 from contextlib import suppress
-from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
 import numpy as np
 import sounddevice as sd
 
-import config
+import settings
 from parakeet_client import connect_or_start_server, transcribe
 from paraserv_protocol import (
     INJECT_SOCKET_GLOB,
@@ -79,12 +72,12 @@ from paraserv_protocol import (
 from vad import SpeechSegmenter
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from pathlib import Path
 
 # Check this often whether any pclaude or popencode still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
 
-# Check this often whether config.py or a user file changed.
+# Check this often whether config.py changed.
 FILE_CHECK_INTERVAL_S = 5.0
 
 # The terminal's delete-previous-character keystroke, same as a real backspace.
@@ -98,89 +91,9 @@ BACKSPACE = b"\x7f"
 # paste.
 CLEAR_PROMPT = b"\x15" * 50
 
-CONFIG_PATH = Path(config.__file__)
-
-# Optional per-machine replacements, outside the repository.
-USER_REPLACEMENTS_PATH = Path.home() / ".config" / "paraserv" / "replacements.toml"
-
-# Spoken commands in the repository, next to this listener.
-KEYPHRASES_PATH = Path(__file__).resolve().parent / "keyphrases.py"
-
-# Contents of USER_REPLACEMENTS_PATH; empty while the file is missing.
-user_replacements: dict[str, str] = {}
-
-# Contents of KEYPHRASES_PATH; empty while the file is missing.
-keyphrases: dict[str, Callable[[], object]] = {}
+CONFIG_PATH = settings.CONFIG_PATH
 
 logger = logging.getLogger("paraserv-listener")
-
-
-def _reload_config() -> bool:
-    """Reload config.py; on failure log the error, keep the old values, return False."""
-    try:
-        importlib.reload(config)
-    except Exception:  # pylint: disable=broad-exception-caught
-        # The user edits config.py while the listener runs; a typo must not
-        # kill the listener.
-        logger.exception("cannot reload %s; keeping the old settings", CONFIG_PATH)
-        return False
-    logger.info("reloaded %s", CONFIG_PATH)
-    return True
-
-
-def _mtime(path: Path) -> float | None:
-    """Return the modification time of path, or None if it does not exist."""
-    try:
-        return path.stat().st_mtime
-    except FileNotFoundError:
-        return None
-
-
-def _reload_user_replacements() -> None:
-    """Load USER_REPLACEMENTS_PATH; on failure log the error and keep the old ones."""
-    try:
-        with USER_REPLACEMENTS_PATH.open("rb") as file:
-            loaded = tomllib.load(file)
-    except FileNotFoundError:
-        loaded = {}
-    except Exception:  # pylint: disable=broad-exception-caught
-        # Same as config.py: a typo while editing must not kill the listener.
-        logger.exception(
-            "cannot load %s; keeping the old replacements",
-            USER_REPLACEMENTS_PATH,
-        )
-        return
-    user_replacements.clear()
-    user_replacements.update(loaded)
-    logger.info("loaded %d replacements from %s", len(loaded), USER_REPLACEMENTS_PATH)
-
-
-def _load_keyphrases() -> None:
-    """Load KEYPHRASES_PATH; on failure log the error and keep the old ones."""
-    if not KEYPHRASES_PATH.exists():
-        keyphrases.clear()
-        return
-    spec = importlib.util.spec_from_file_location("keyphrases", KEYPHRASES_PATH)
-    if spec is None or spec.loader is None:
-        logger.error("cannot load %s", KEYPHRASES_PATH)
-        return
-    module = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(module)
-    except Exception:  # pylint: disable=broad-exception-caught
-        # The user edits this file; a failure must not stop the listener.
-        logger.exception("cannot load %s; keeping the old keyphrases", KEYPHRASES_PATH)
-        return
-    loaded = module.KEYPHRASES
-    if not isinstance(loaded, dict) or not all(
-        isinstance(phrase, str) and callable(action)
-        for phrase, action in loaded.items()
-    ):
-        logger.error("KEYPHRASES in %s must map strings to callables", KEYPHRASES_PATH)
-        return
-    keyphrases.clear()
-    keyphrases.update(loaded)
-    logger.info("loaded %d keyphrases from %s", len(loaded), KEYPHRASES_PATH)
 
 
 def _acquire_single_instance_lock() -> IO[str] | None:
@@ -239,8 +152,8 @@ def _send(data: bytes) -> bool:
 
 
 def _apply_replacements(text: str) -> str:
-    """Apply config and user replacements; an empty replacement deletes the phrase."""
-    replacements = config.REPLACEMENTS | user_replacements
+    """Apply the replacements from config.py; an empty one deletes the phrase."""
+    replacements = settings.REPLACEMENTS
     for heard, replacement in sorted(
         replacements.items(),
         key=lambda item: len(item[0]),
@@ -272,8 +185,8 @@ def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
 
 def _submit_wait_s() -> float:
     """Return how long after a turn ends Enter follows without the submit keyword."""
-    extra_silence_s = (config.SUBMIT_SILENCE_MS - config.MIN_SILENCE_MS) / 1000
-    return max(config.SUBMIT_DELAY_S, extra_silence_s)
+    extra_silence_s = (settings.SUBMIT_SILENCE_MS - settings.MIN_SILENCE_MS) / 1000
+    return max(settings.SUBMIT_DELAY_S, extra_silence_s)
 
 
 def _type_turn(
@@ -286,25 +199,25 @@ def _type_turn(
     Return False first if no wrapper is running. Return as second value when to
     press Enter for the typed text, or None if nothing waits for Enter.
     """
-    if config.CLEAR_PHRASE:
-        text, clear_said = _strip_trailing_phrase(text, config.CLEAR_PHRASE)
+    if settings.CLEAR_PHRASE:
+        text, clear_said = _strip_trailing_phrase(text, settings.CLEAR_PHRASE)
         if clear_said:
             return _send(CLEAR_PROMPT), None
     submit_said = hold_said = False
-    if config.SUBMIT_KEYWORD:
-        text, submit_said = _strip_trailing_phrase(text, config.SUBMIT_KEYWORD)
-    if config.HOLD_PHRASE and not submit_said:
-        text, hold_said = _strip_trailing_phrase(text, config.HOLD_PHRASE)
+    if settings.SUBMIT_KEYWORD:
+        text, submit_said = _strip_trailing_phrase(text, settings.SUBMIT_KEYWORD)
+    if settings.HOLD_PHRASE and not submit_said:
+        text, hold_said = _strip_trailing_phrase(text, settings.HOLD_PHRASE)
     if text and not _send(f"{text} ".encode()):
         return False, None
     if submit_said:
-        time.sleep(config.SUBMIT_DELAY_S)
+        time.sleep(settings.SUBMIT_DELAY_S)
         return _send(b"\r"), None
-    if hold_said or config.SUBMIT_SILENCE_MS <= 0:
+    if hold_said or settings.SUBMIT_SILENCE_MS <= 0:
         return True, None
     # A short turn alone, such as "Okay.", gets no Enter; it joins the Enter of
     # longer text before it that still waits.
-    if (text and len(text) >= config.MIN_SUBMIT_CHARS) or enter_due is not None:
+    if (text and len(text) >= settings.MIN_SUBMIT_CHARS) or enter_due is not None:
         return True, turn_end + _submit_wait_s()
     return True, None
 
@@ -316,7 +229,7 @@ def _apply_keyphrase(text: str) -> str:
     one. A failing action is logged and the listener carries on.
     """
     for phrase, action in sorted(
-        keyphrases.items(),
+        settings.KEYPHRASES.items(),
         key=lambda item: len(item[0]),
         reverse=True,
     ):
@@ -356,15 +269,15 @@ def _any_session_running() -> bool:
 def listen() -> None:
     """Record, segment, transcribe, and inject until no wrapper runs anymore."""
     segmenter = SpeechSegmenter(
-        config.MIN_SILENCE_MS,
-        config.MAX_SEGMENT_SECONDS,
-        config.MIN_SPEECH_MS,
+        settings.MIN_SILENCE_MS,
+        settings.MAX_SEGMENT_SECONDS,
+        settings.MIN_SPEECH_MS,
     )
     pending_chunks: list[np.ndarray] = []
     lock = threading.Lock()
     partial_shown = ""
     partial_checked_samples = 0
-    partial_audio_samples = int(config.PARTIAL_SECONDS * SAMPLE_RATE)
+    partial_audio_samples = int(settings.PARTIAL_SECONDS * SAMPLE_RATE)
     paused = False
     # When to press Enter for the typed turns after SUBMIT_SILENCE_MS, or None.
     enter_due: float | None = None
@@ -390,31 +303,21 @@ def listen() -> None:
         logger.info("listening")
         next_session_check = time.monotonic() + SESSION_CHECK_INTERVAL_S
         config_mtime = CONFIG_PATH.stat().st_mtime
-        _reload_user_replacements()
-        user_mtime = _mtime(USER_REPLACEMENTS_PATH)
-        _load_keyphrases()
-        keyphrases_mtime = _mtime(KEYPHRASES_PATH)
         next_file_check = time.monotonic() + FILE_CHECK_INTERVAL_S
         while True:
-            sd.sleep(config.POLL_MS)
+            sd.sleep(settings.POLL_MS)
             if time.monotonic() >= next_file_check:
                 next_file_check = time.monotonic() + FILE_CHECK_INTERVAL_S
-                if (mtime := _mtime(USER_REPLACEMENTS_PATH)) != user_mtime:
-                    user_mtime = mtime
-                    _reload_user_replacements()
-                if (mtime := _mtime(KEYPHRASES_PATH)) != keyphrases_mtime:
-                    keyphrases_mtime = mtime
-                    _load_keyphrases()
                 if (mtime := CONFIG_PATH.stat().st_mtime) != config_mtime:
                     config_mtime = mtime
-                    if _reload_config():
+                    if settings.reload():
                         segmenter.set_limits(
-                            config.MIN_SILENCE_MS,
-                            config.MAX_SEGMENT_SECONDS,
-                            config.MIN_SPEECH_MS,
+                            settings.MIN_SILENCE_MS,
+                            settings.MAX_SEGMENT_SECONDS,
+                            settings.MIN_SPEECH_MS,
                         )
                         partial_audio_samples = int(
-                            config.PARTIAL_SECONDS * SAMPLE_RATE,
+                            settings.PARTIAL_SECONDS * SAMPLE_RATE,
                         )
             with lock:
                 fresh = pending_chunks.copy()
@@ -441,10 +344,10 @@ def listen() -> None:
                     text = _apply_keyphrase(text)
                     logger.info("heard: %r", text)
                     pause_said = False
-                    if config.PAUSE_PHRASE:
+                    if settings.PAUSE_PHRASE:
                         text, pause_said = _strip_trailing_phrase(
                             text,
-                            config.PAUSE_PHRASE,
+                            settings.PAUSE_PHRASE,
                         )
                     running, enter_due = _type_turn(text, turn_end, enter_due)
                     if not running:
@@ -467,7 +370,7 @@ def listen() -> None:
                     partial_checked_samples = 0
                 if (
                     not paused
-                    and config.PARTIAL_SECONDS > 0
+                    and settings.PARTIAL_SECONDS > 0
                     and current is not None
                     and len(current) - partial_checked_samples >= partial_audio_samples
                 ):
