@@ -32,6 +32,10 @@ The listener reloads config.py when the file changes, so listener settings
 apply without a restart. If the new config.py fails to load, the listener
 logs the error and keeps the old settings.
 
+A turn ending with a phrase in KEYPHRASES_PATH runs its action instead of
+typing the phrase. That file holds both the phrases and their functions, and
+the listener reloads it on save.
+
 Personal replacements live in USER_REPLACEMENTS_PATH, a TOML file of
 "heard" = "replacement" pairs that the listener reloads the same way. They
 add to config.REPLACEMENTS and win on a clash.
@@ -47,6 +51,7 @@ Usage:
 
 import fcntl
 import importlib
+import importlib.util
 import logging
 import re
 import socket
@@ -56,7 +61,7 @@ import time
 import tomllib
 from contextlib import suppress
 from pathlib import Path
-from typing import IO
+from typing import IO, TYPE_CHECKING
 
 import numpy as np
 import sounddevice as sd
@@ -73,10 +78,13 @@ from paraserv_protocol import (
 )
 from vad import SpeechSegmenter
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 # Check this often whether any pclaude still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
 
-# Check this often whether config.py or the user replacements file changed.
+# Check this often whether config.py or a user file changed.
 FILE_CHECK_INTERVAL_S = 5.0
 
 # The terminal's delete-previous-character keystroke, same as a real backspace.
@@ -94,8 +102,14 @@ CONFIG_PATH = Path(config.__file__)
 # Optional per-machine replacements, outside the repository.
 USER_REPLACEMENTS_PATH = Path.home() / ".config" / "paraserv" / "replacements.toml"
 
+# Spoken commands in the repository, next to this listener.
+KEYPHRASES_PATH = Path(__file__).resolve().parent / "keyphrases.py"
+
 # Contents of USER_REPLACEMENTS_PATH; empty while the file is missing.
 user_replacements: dict[str, str] = {}
+
+# Contents of KEYPHRASES_PATH; empty while the file is missing.
+keyphrases: dict[str, Callable[[], object]] = {}
 
 logger = logging.getLogger("paraserv-listener")
 
@@ -137,6 +151,33 @@ def _reload_user_replacements() -> None:
         return
     user_replacements = loaded
     logger.info("loaded %d replacements from %s", len(loaded), USER_REPLACEMENTS_PATH)
+
+
+def _load_keyphrases() -> None:
+    """Load KEYPHRASES_PATH; on failure log the error and keep the old ones."""
+    if not KEYPHRASES_PATH.exists():
+        keyphrases.clear()
+        return
+    spec = importlib.util.spec_from_file_location("keyphrases", KEYPHRASES_PATH)
+    if spec is None or spec.loader is None:
+        logger.error("cannot load %s", KEYPHRASES_PATH)
+        return
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        logger.exception("cannot load %s; keeping the old keyphrases", KEYPHRASES_PATH)
+        return
+    loaded = module.KEYPHRASES
+    if not isinstance(loaded, dict) or not all(
+        isinstance(phrase, str) and callable(action)
+        for phrase, action in loaded.items()
+    ):
+        logger.error("KEYPHRASES in %s must map strings to callables", KEYPHRASES_PATH)
+        return
+    keyphrases.clear()
+    keyphrases.update(loaded)
+    logger.info("loaded %d keyphrases from %s", len(loaded), KEYPHRASES_PATH)
 
 
 def _acquire_single_instance_lock() -> IO[str] | None:
@@ -254,6 +295,30 @@ def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
     return text[: match.start()], True
 
 
+def _apply_keyphrase(text: str) -> str:
+    """Run the action for a trailing keyphrase; return text without the phrase.
+
+    The longest matching phrase wins, so a short phrase cannot shadow a longer
+    one. A failing action is logged and the listener carries on.
+    """
+    for phrase, action in sorted(
+        keyphrases.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if not phrase.strip():
+            continue
+        rest, matched = _strip_trailing_phrase(text, phrase)
+        if matched:
+            logger.info("keyphrase: %r", phrase)
+            try:
+                action()
+            except Exception:
+                logger.exception("keyphrase action failed for %r", phrase)
+            return rest
+    return text
+
+
 def _submit_wait_s() -> float:
     """Return how long after a turn ends Enter follows without the submit keyword."""
     extra_silence_s = (config.SUBMIT_SILENCE_MS - config.MIN_SILENCE_MS) / 1000
@@ -316,6 +381,8 @@ def listen() -> None:
         config_mtime = CONFIG_PATH.stat().st_mtime
         _reload_user_replacements()
         user_mtime = _mtime(USER_REPLACEMENTS_PATH)
+        _load_keyphrases()
+        keyphrases_mtime = _mtime(KEYPHRASES_PATH)
         next_file_check = time.monotonic() + FILE_CHECK_INTERVAL_S
         while True:
             sd.sleep(config.POLL_MS)
@@ -324,6 +391,9 @@ def listen() -> None:
                 if (mtime := _mtime(USER_REPLACEMENTS_PATH)) != user_mtime:
                     user_mtime = mtime
                     _reload_user_replacements()
+                if (mtime := _mtime(KEYPHRASES_PATH)) != keyphrases_mtime:
+                    keyphrases_mtime = mtime
+                    _load_keyphrases()
                 if (mtime := CONFIG_PATH.stat().st_mtime) != config_mtime:
                     config_mtime = mtime
                     if _reload_config():
@@ -357,6 +427,7 @@ def listen() -> None:
                     partial_shown = ""
                     partial_checked_samples = 0
                     text = _apply_replacements(transcribe(segment))
+                    text = _apply_keyphrase(text)
                     logger.info("heard: %r", text)
                     pause_said = False
                     if config.PAUSE_PHRASE:

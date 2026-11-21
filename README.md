@@ -17,6 +17,7 @@ The project is structured as follows:
 .
 ├── autostart/              Optional launchd agent and systemd user service for the server.
 ├── config.py               Settings; the listener reloads them on save.
+├── keyphrases.py           Spoken commands; the listener reloads them on save.
 ├── LICENSE                 License definition.
 ├── listener.py             Records the microphone and sends each spoken turn to pclaude.
 ├── parakeet_client.py      Talks to the server; transcribes a WAV file or stops the server.
@@ -95,7 +96,13 @@ Personal word replacements, such as your own fillers and work terms, go in
 `~/.config/paraserv/replacements.toml` as `"heard" = "replacement"` lines.
 They add to `REPLACEMENTS`, win on a clash, and reload on save.
 
-The listener reloads `config.py` on save.
+Put your own spoken commands in `keyphrases.py` in the project root. The file
+defines zero-argument action functions and a `KEYPHRASES` dict that maps a
+phrase to its function. A turn ending with a phrase from that dict runs the
+action instead of typing the phrase. Case and punctuation do not matter, and
+the longest matching phrase wins.
+
+The listener reloads `config.py` and `keyphrases.py` on save.
 After changing `DEVICE`, stop the server; the next turn starts a fresh one.
 
 ## How It Works
