@@ -93,10 +93,8 @@ def _load_transcriber(device: str) -> Transcriber:
 
         logger.info("device: gpu (MLX %s)", mx.default_device())
         model = load(_resolve_mlx_model_path(MLX_REPO))
-        return (
-            lambda audio: typing.cast("typing.Any", model)
-            .generate(mx.array(audio))
-            .text.strip()
+        return lambda audio: (
+            typing.cast("typing.Any", model).generate(mx.array(audio)).text.strip()
         )
 
     import onnx_asr
