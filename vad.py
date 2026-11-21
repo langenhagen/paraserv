@@ -1,4 +1,6 @@
-"""Live speech segmentation with Silero VAD (ONNX on the CPU).
+"""Live speech segmentation with Silero Voice Activity Detection (VAD).
+
+Uses the ONNX model on the CPU.
 
 Feed microphone samples in any block size. A segment is finished once a pause
 of --min-silence-ms follows speech, or once it reaches --max-segment-seconds.
