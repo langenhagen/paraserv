@@ -62,9 +62,9 @@ HOLD_PHRASE: str = "hold it"
 CLEAR_PHRASE: str = "clear message"
 
 # Listener setting. A turn that ends with this phrase pauses listening, like
-# Ctrl+\ in pclaude; Ctrl+\ resumes it. The text before the phrase is typed
+# Ctrl+\ in any wrapper; Ctrl+\ resumes it. The text before the phrase is typed
 # as usual, the phrase itself is not. Case and punctuation do not matter. ""
-# disables it. The pause holds across pclaude restarts.
+# disables it. The pause holds across wrapper restarts.
 PAUSE_PHRASE: str = "stop listening"
 
 # Listener setting. Wait at least this long between the transcript and its
@@ -106,6 +106,11 @@ REPLACEMENTS: dict[str, str] = {
     "p clawed": "pclaude",
     "p open code": "popencode",
     "p opencode": "popencode",
+    "p lama": "pollama",
+    "p llama": "pollama",
+    "p ollama": "pollama",
+    "ol lama": "ollama",
+    "o llama": "ollama",
     "open code": "opencode",
     "cloud code": "Claude Code",
     "cloud haiku": "Claude Haiku",

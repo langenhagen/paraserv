@@ -1,7 +1,7 @@
 [project]
 name = "paraserv"
 version = "0.1.0"
-description = "Talk to Claude Code or OpenCode: a background Parakeet speech-to-text server, a microphone listener, and the pclaude and popencode wrappers that type transcripts into the active CLI."
+description = "Talk to Claude Code, OpenCode, or Ollama: a background Parakeet speech-to-text server, a microphone listener, and the pclaude, popencode, and pollama wrappers that type transcripts into the active CLI."
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [

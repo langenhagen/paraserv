@@ -3,7 +3,7 @@ r"""Listen to the microphone and type each spoken turn into the active CLI.
 
 Silero VAD (vad.py) cuts the microphone stream at pauses of
 settings.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
-goes to the inject socket of the newest running pclaude or popencode.
+goes to the inject socket of the newest running wrapper.
 Enter follows right away if the turn ends with settings.SUBMIT_KEYWORD, and
 otherwise after settings.SUBMIT_SILENCE_MS of silence, unless the last turn ends
 with settings.HOLD_PHRASE. Neither the keyword nor the phrase is sent to the CLI.
@@ -24,7 +24,7 @@ provisional transcripts.
 
 While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
-transcript. Ctrl+\ in pclaude or popencode creates or removes the marker file.
+transcript. Ctrl+\ in any wrapper creates or removes the marker file.
 A turn that ends with settings.PAUSE_PHRASE creates it: the listener types the
 text before the phrase as usual, drops the phrase, and pauses.
 
@@ -37,13 +37,13 @@ gitignored config.py next to this listener; config.sample.py documents them.
 A turn ending with a phrase from settings.KEYPHRASES runs its action instead
 of typing the phrase.
 
-pclaude and popencode start the listener detached. A lock file ensures that at
-most one listener per user runs, so several pclaude or popencode sessions share
-one microphone. The listener exits once no wrapper is running.
+pclaude, popencode, and pollama start the listener detached. A lock file ensures
+that at most one listener per user runs, so sessions of these wrappers share one
+microphone. The listener exits once no wrapper is running.
 
 Usage:
 
-    listener.py      listen until no pclaude or popencode is running anymore
+    listener.py      listen until no wrapper is running anymore
 """
 
 import fcntl
@@ -74,7 +74,7 @@ from vad import SpeechSegmenter
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Check this often whether any pclaude or popencode still runs.
+# Check this often whether any wrapper still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
 
 # Check this often whether config.py changed.
@@ -328,7 +328,7 @@ def listen() -> None:
                 if paused:
                     segmenter.flush()  # drop the unfinished turn
                     if not _clear_partial(partial_shown):
-                        logger.info("no pclaude or popencode running; exiting")
+                        logger.info("no wrapper running; exiting")
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
@@ -336,7 +336,7 @@ def listen() -> None:
                 for segment in segmenter.feed(np.concatenate(fresh)):
                     turn_end = time.monotonic()
                     if not _clear_partial(partial_shown):
-                        logger.info("no pclaude or popencode running; exiting")
+                        logger.info("no wrapper running; exiting")
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
@@ -351,7 +351,7 @@ def listen() -> None:
                         )
                     running, enter_due = _type_turn(text, turn_end, enter_due)
                     if not running:
-                        logger.info("no pclaude or popencode running; exiting")
+                        logger.info("no wrapper running; exiting")
                         return
                     if pause_said:
                         LISTENER_PAUSED_PATH.touch()
@@ -364,7 +364,7 @@ def listen() -> None:
                 if current is None and partial_shown:
                     # The segmenter dropped the turn for too little speech.
                     if not _clear_partial(partial_shown):
-                        logger.info("no pclaude or popencode running; exiting")
+                        logger.info("no wrapper running; exiting")
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
@@ -378,7 +378,7 @@ def listen() -> None:
                     partial_text = _apply_replacements(transcribe(current))
                     if partial_text != partial_shown:
                         if not _update_partial(partial_shown, partial_text):
-                            logger.info("no pclaude or popencode running; exiting")
+                            logger.info("no wrapper running; exiting")
                             return
                         partial_shown = partial_text
             # Speaking again before enter_due adds the new turn to the same prompt.
@@ -389,11 +389,11 @@ def listen() -> None:
             ):
                 enter_due = None
                 if not _send(b"\r"):
-                    logger.info("no pclaude or popencode running; exiting")
+                    logger.info("no wrapper running; exiting")
                     return
             if time.monotonic() >= next_session_check:
                 if not _any_session_running():
-                    logger.info("no pclaude or popencode running; exiting")
+                    logger.info("no wrapper running; exiting")
                     return
                 next_session_check = time.monotonic() + SESSION_CHECK_INTERVAL_S
 
