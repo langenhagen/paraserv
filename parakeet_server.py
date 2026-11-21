@@ -19,11 +19,16 @@ Stop the server with:
     ...or send a SIGTERM, or press Ctrl-C.
 """
 
+# Only the selected backend is imported; loading the other takes seconds.
+# ruff: noqa: PLC0415
+# pylint: disable=import-outside-toplevel
+
 import fcntl
 import logging
 import signal
 import socketserver
 import sys
+import typing
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
@@ -64,14 +69,15 @@ def _resolve_mlx_model_path(repo: str) -> Path:
     )
 
     try:
+        # Fixed repo and patterns, cached locally; updates are intentional.
         # mlx-audio downloads only these patterns. Without them the cache
         # counts as incomplete because README.md and .gitattributes are missing.
         return Path(
-            snapshot_download(
+            snapshot_download(  # nosec
                 repo,
                 local_files_only=True,
                 allow_patterns=DEFAULT_ALLOW_PATTERNS,
-            )
+            ),
         )
     except LocalEntryNotFoundError:
         logger.info("%s is not cached yet, downloading", repo)
@@ -87,7 +93,11 @@ def _load_transcriber(device: str) -> Transcriber:
 
         logger.info("device: gpu (MLX %s)", mx.default_device())
         model = load(_resolve_mlx_model_path(MLX_REPO))
-        return lambda audio: model.generate(mx.array(audio)).text.strip()
+        return (
+            lambda audio: typing.cast("typing.Any", model)
+            .generate(mx.array(audio))
+            .text.strip()
+        )
 
     import onnx_asr
 
@@ -120,7 +130,9 @@ class TranscribeHandler(socketserver.StreamRequestHandler):
         audio = np.frombuffer(audio_bytes, dtype=np.float32)
         text = server.transcribe(audio)
         logger.info(
-            "transcribe: %.1f s -> %d characters", len(audio) / SAMPLE_RATE, len(text)
+            "transcribe: %.1f s -> %d characters",
+            len(audio) / SAMPLE_RATE,
+            len(text),
         )
         try:
             send_frame(self.request, {"type": "text", "text": text})

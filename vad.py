@@ -8,9 +8,14 @@ A segment with less speech than min_speech_ms is dropped, as in Silero's
 reference code. The listener sets it from config.MIN_SPEECH_MS.
 """
 
+# huggingface_hub is loaded only when the VAD path is resolved.
+# ruff: noqa: PLC0415
+# pylint: disable=import-outside-toplevel
+
 import logging
 from collections import deque
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import onnxruntime as rt
@@ -33,10 +38,13 @@ def resolve_vad_path() -> Path:
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import LocalEntryNotFoundError
 
+    # Fixed repo and file, cached locally; updates are intentional.
     try:
-        return Path(hf_hub_download(VAD_REPO, VAD_FILE, local_files_only=True))
+        return Path(
+            hf_hub_download(VAD_REPO, VAD_FILE, local_files_only=True),  # nosec
+        )
     except LocalEntryNotFoundError:
-        return Path(hf_hub_download(VAD_REPO, VAD_FILE))
+        return Path(hf_hub_download(VAD_REPO, VAD_FILE))  # nosec
 
 
 class SpeechSegmenter:
@@ -74,14 +82,19 @@ class SpeechSegmenter:
         self._speech_frames = 0
 
     def set_limits(
-        self, min_silence_ms: int, max_segment_seconds: float, min_speech_ms: int = 0
+        self,
+        min_silence_ms: int,
+        max_segment_seconds: float,
+        min_speech_ms: int = 0,
     ) -> None:
         """Set the pause that ends a segment, its maximum length, and minimum speech."""
         self._min_silence_frames = max(
-            1, min_silence_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES
+            1,
+            min_silence_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES,
         )
         self._max_segment_frames = max(
-            1, int(max_segment_seconds * SAMPLE_RATE / FRAME_SAMPLES)
+            1,
+            int(max_segment_seconds * SAMPLE_RATE / FRAME_SAMPLES),
         )
         self._min_speech_frames = min_speech_ms * SAMPLE_RATE // 1000 // FRAME_SAMPLES
 
@@ -90,26 +103,18 @@ class SpeechSegmenter:
         """Return the unfinished segment, or None outside of speech."""
         return np.concatenate(self._segment) if self._segment else None
 
-    def feed(self, samples: np.ndarray) -> list[np.ndarray]:
-        """Consume samples and return the segments finished by them."""
-        finished = []
-        self._unframed = np.concatenate([self._unframed, samples])
-        while len(self._unframed) >= FRAME_SAMPLES:
-            frame = self._unframed[:FRAME_SAMPLES]
-            self._unframed = self._unframed[FRAME_SAMPLES:]
-            if (segment := self._step(frame)) is not None:
-                finished.append(segment)
-        return finished
-
-    def flush(self) -> np.ndarray | None:
-        """Return the unfinished segment including unframed samples, and reset."""
-        if not self._segment:
-            return None
-        segment = np.concatenate([*self._segment, self._unframed])
-        self._segment = []
-        self._speech_frames = 0
-        self._unframed = np.empty(0, dtype=np.float32)
-        return segment
+    def _speech_probability(self, frame: np.ndarray) -> float:
+        """Run Silero VAD on one frame and carry its recurrent state."""
+        output, self._state = self._session.run(
+            ["output", "stateN"],
+            {
+                "input": np.concatenate([self._context, frame])[np.newaxis, :],
+                "state": self._state,
+                "sr": np.array([SAMPLE_RATE], dtype=np.int64),
+            },
+        )
+        self._context = frame[-CONTEXT_SAMPLES:]
+        return float(cast("np.ndarray", output)[0, 0])
 
     def _step(self, frame: np.ndarray) -> np.ndarray | None:
         """Classify one frame and return a segment if this frame finishes one."""
@@ -144,15 +149,23 @@ class SpeechSegmenter:
             return segment
         return None
 
-    def _speech_probability(self, frame: np.ndarray) -> float:
-        """Run Silero VAD on one frame and carry its recurrent state."""
-        output, self._state = self._session.run(
-            ["output", "stateN"],
-            {
-                "input": np.concatenate([self._context, frame])[np.newaxis, :],
-                "state": self._state,
-                "sr": np.array([SAMPLE_RATE], dtype=np.int64),
-            },
-        )
-        self._context = frame[-CONTEXT_SAMPLES:]
-        return float(output[0, 0])
+    def feed(self, samples: np.ndarray) -> list[np.ndarray]:
+        """Consume samples and return the segments finished by them."""
+        finished = []
+        self._unframed = np.concatenate([self._unframed, samples])
+        while len(self._unframed) >= FRAME_SAMPLES:
+            frame = self._unframed[:FRAME_SAMPLES]
+            self._unframed = self._unframed[FRAME_SAMPLES:]
+            if (segment := self._step(frame)) is not None:
+                finished.append(segment)
+        return finished
+
+    def flush(self) -> np.ndarray | None:
+        """Return the unfinished segment including unframed samples, and reset."""
+        if not self._segment:
+            return None
+        segment = np.concatenate([*self._segment, self._unframed])
+        self._segment = []
+        self._speech_frames = 0
+        self._unframed = np.empty(0, dtype=np.float32)
+        return segment

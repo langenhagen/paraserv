@@ -118,7 +118,7 @@ def _reload_config() -> bool:
     """Reload config.py; on failure log the error, keep the old values, return False."""
     try:
         importlib.reload(config)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # The user edits config.py while the listener runs; a typo must not
         # kill the listener.
         logger.exception("cannot reload %s; keeping the old settings", CONFIG_PATH)
@@ -137,19 +137,20 @@ def _mtime(path: Path) -> float | None:
 
 def _reload_user_replacements() -> None:
     """Load USER_REPLACEMENTS_PATH; on failure log the error and keep the old ones."""
-    global user_replacements
     try:
         with USER_REPLACEMENTS_PATH.open("rb") as file:
             loaded = tomllib.load(file)
     except FileNotFoundError:
         loaded = {}
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # Same as config.py: a typo while editing must not kill the listener.
         logger.exception(
-            "cannot load %s; keeping the old replacements", USER_REPLACEMENTS_PATH
+            "cannot load %s; keeping the old replacements",
+            USER_REPLACEMENTS_PATH,
         )
         return
-    user_replacements = loaded
+    user_replacements.clear()
+    user_replacements.update(loaded)
     logger.info("loaded %d replacements from %s", len(loaded), USER_REPLACEMENTS_PATH)
 
 
@@ -165,7 +166,8 @@ def _load_keyphrases() -> None:
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
+        # The user edits this file; a failure must not stop the listener.
         logger.exception("cannot load %s; keeping the old keyphrases", KEYPHRASES_PATH)
         return
     loaded = module.KEYPHRASES
@@ -236,22 +238,47 @@ def _send(data: bytes) -> bool:
 
 
 def _apply_replacements(text: str) -> str:
-    """Apply config.REPLACEMENTS and the user file to text; an empty replacement deletes the phrase."""
-    replacements = {**config.REPLACEMENTS, **user_replacements}
+    """Apply config and user replacements; an empty replacement deletes the phrase."""
+    replacements = config.REPLACEMENTS | user_replacements
     for heard, replacement in sorted(
-        replacements.items(), key=lambda item: len(item[0]), reverse=True
+        replacements.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
     ):
         suffix = "" if replacement else r",?\s*"
         pattern = rf"(?<!\w){re.escape(heard)}(?!\w){suffix}"
-        text = re.sub(
-            pattern, lambda _match, value=replacement: value, text, flags=re.IGNORECASE
-        )
-    text = re.sub(r"\s+([,.?!])", r"\1", text)
-    return text.strip()
+
+        def replace(_match: re.Match[str], value: str = replacement) -> str:
+            return value
+
+        text = re.sub(pattern, replace, text, flags=re.IGNORECASE)
+    return re.sub(r"\s+([,.?!])", r"\1", text).strip()
+
+
+def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
+    """Remove the phrase from the end of text; return the rest and whether it was there.
+
+    Case and punctuation between and after the phrase's words do not matter.
+    Commas and spaces before the phrase go too, so for "roger", "Fix it, Roger."
+    becomes "Fix it" and "Fix it. Roger." becomes "Fix it.".
+    """
+    words = r"\W+".join(re.escape(word) for word in phrase.split())
+    match = re.search(rf"[\s,]*\b{words}\W*$", text, flags=re.IGNORECASE)
+    if match is None:
+        return text, False
+    return text[: match.start()], True
+
+
+def _submit_wait_s() -> float:
+    """Return how long after a turn ends Enter follows without the submit keyword."""
+    extra_silence_s = (config.SUBMIT_SILENCE_MS - config.MIN_SILENCE_MS) / 1000
+    return max(config.SUBMIT_DELAY_S, extra_silence_s)
 
 
 def _type_turn(
-    text: str, turn_end: float, enter_due: float | None
+    text: str,
+    turn_end: float,
+    enter_due: float | None,
 ) -> tuple[bool, float | None]:
     """Type a finished turn into the newest pclaude and decide when Enter follows.
 
@@ -281,20 +308,6 @@ def _type_turn(
     return True, None
 
 
-def _strip_trailing_phrase(text: str, phrase: str) -> tuple[str, bool]:
-    """Remove the phrase from the end of text; return the rest and whether it was there.
-
-    Case and punctuation between and after the phrase's words do not matter.
-    Commas and spaces before the phrase go too, so for "roger", "Fix it, Roger."
-    becomes "Fix it" and "Fix it. Roger." becomes "Fix it.".
-    """
-    words = r"\W+".join(re.escape(word) for word in phrase.split())
-    match = re.search(rf"[\s,]*\b{words}\W*$", text, flags=re.IGNORECASE)
-    if match is None:
-        return text, False
-    return text[: match.start()], True
-
-
 def _apply_keyphrase(text: str) -> str:
     """Run the action for a trailing keyphrase; return text without the phrase.
 
@@ -313,16 +326,11 @@ def _apply_keyphrase(text: str) -> str:
             logger.info("keyphrase: %r", phrase)
             try:
                 action()
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
+                # Keyphrase actions are user code; a failure must not stop the listener.
                 logger.exception("keyphrase action failed for %r", phrase)
             return rest
     return text
-
-
-def _submit_wait_s() -> float:
-    """Return how long after a turn ends Enter follows without the submit keyword."""
-    extra_silence_s = (config.SUBMIT_SILENCE_MS - config.MIN_SILENCE_MS) / 1000
-    return max(config.SUBMIT_DELAY_S, extra_silence_s)
 
 
 def _clear_partial(shown: str) -> bool:
@@ -347,7 +355,9 @@ def _any_session_running() -> bool:
 def listen() -> None:
     """Record, segment, transcribe, and inject until no pclaude runs anymore."""
     segmenter = SpeechSegmenter(
-        config.MIN_SILENCE_MS, config.MAX_SEGMENT_SECONDS, config.MIN_SPEECH_MS
+        config.MIN_SILENCE_MS,
+        config.MAX_SEGMENT_SECONDS,
+        config.MIN_SPEECH_MS,
     )
     pending_chunks: list[np.ndarray] = []
     lock = threading.Lock()
@@ -403,7 +413,7 @@ def listen() -> None:
                             config.MIN_SPEECH_MS,
                         )
                         partial_audio_samples = int(
-                            config.PARTIAL_SECONDS * SAMPLE_RATE
+                            config.PARTIAL_SECONDS * SAMPLE_RATE,
                         )
             with lock:
                 fresh = pending_chunks.copy()
@@ -432,7 +442,8 @@ def listen() -> None:
                     pause_said = False
                     if config.PAUSE_PHRASE:
                         text, pause_said = _strip_trailing_phrase(
-                            text, config.PAUSE_PHRASE
+                            text,
+                            config.PAUSE_PHRASE,
                         )
                     running, enter_due = _type_turn(text, turn_end, enter_due)
                     if not running:

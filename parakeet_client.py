@@ -14,9 +14,12 @@ Usage:
     parakeet_client.py --help          show help
 """
 
+# CLI output is intentional; the server command uses a fixed local script.
+# ruff: noqa: T201, S603
+
 import argparse
 import socket
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
 import wave
@@ -56,7 +59,7 @@ def _start_server() -> subprocess.Popen[bytes]:
     ensure_state_dir()
     print(f"paraserv: starting server, log: {SERVER_LOG_PATH}", file=sys.stderr)
     with SERVER_LOG_PATH.open("ab") as log_file:
-        return subprocess.Popen(
+        return subprocess.Popen(  # nosec B603
             [sys.executable, str(SERVER_SCRIPT)],
             stdin=subprocess.DEVNULL,
             stdout=log_file,
@@ -79,12 +82,13 @@ def connect_or_start_server() -> socket.socket:
         returncode = server_process.poll()
         if returncode not in {None, 0}:
             sys.exit(
-                f"paraserv: server exited with code {returncode}, see {SERVER_LOG_PATH}"
+                f"paraserv: server exited with code {returncode}, "
+                f"see {SERVER_LOG_PATH}",
             )
         if time.monotonic() > deadline:
             sys.exit(
                 f"paraserv: server not ready in {STARTUP_TIMEOUT_S} s, "
-                f"see {SERVER_LOG_PATH}"
+                f"see {SERVER_LOG_PATH}",
             )
         time.sleep(STARTUP_POLL_INTERVAL_S)
 

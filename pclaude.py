@@ -21,13 +21,16 @@ Test without voice:
     printf 'hello' | nc -U ~/.cache/paraserv/inject-<pid>.sock
 """
 
+# CLI output is intentional; both child commands use fixed local arguments.
+# ruff: noqa: T201, S603, S606, S607
+
 import fcntl
 import os
 import pty
 import select
 import signal
 import socket
-import subprocess
+import subprocess  # nosec B404
 import sys
 import termios
 import tty
@@ -65,7 +68,8 @@ def _start_listener() -> None:
     A listener that is already running makes the new one exit right away.
     """
     with LISTENER_LOG_PATH.open("ab") as log_file:
-        subprocess.Popen(
+        # A with block would wait for the listener; it must stay detached.
+        subprocess.Popen(  # pylint: disable=consider-using-with  # nosec B603
             [sys.executable, str(LISTENER_SCRIPT)],
             stdin=subprocess.DEVNULL,
             stdout=log_file,
@@ -138,7 +142,7 @@ def main() -> int:
         # Child: give the new terminal the real one's size before claude reads it.
         fcntl.ioctl(sys.stdin.fileno(), termios.TIOCSWINSZ, window_size)
         try:
-            os.execvp("claude", ["claude", *sys.argv[1:]])
+            os.execvp("claude", ["claude", *sys.argv[1:]])  # nosec B606, B607
         except OSError as error:
             print(f"pclaude: cannot run claude: {error}", file=sys.stderr)
             os._exit(127)
