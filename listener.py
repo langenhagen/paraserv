@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-r"""Listen to the microphone and type each spoken turn into Claude Code.
+r"""Listen to the microphone and type each spoken turn into the active CLI.
 
 Silero VAD (vad.py) cuts the microphone stream at pauses of
 config.MIN_SILENCE_MS. Each turn goes to the Parakeet server, and the transcript
-goes to the inject socket of the newest running pclaude.
+goes to the inject socket of the newest running pclaude or popencode.
 Enter follows right away if the turn ends with config.SUBMIT_KEYWORD, and
 otherwise after config.SUBMIT_SILENCE_MS of silence, unless the last turn ends
-with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to Claude.
+with config.HOLD_PHRASE. Neither the keyword nor the phrase is sent to the CLI.
 A turn that ends with config.CLEAR_PHRASE clears the whole prompt field with
 Ctrl+U instead.
 
@@ -24,9 +24,9 @@ provisional transcripts.
 
 While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
-transcript. Ctrl+\ in pclaude creates or removes the marker file. A turn
-that ends with config.PAUSE_PHRASE creates it: the listener types the text
-before the phrase as usual, drops the phrase, and pauses.
+transcript. Ctrl+\ in pclaude or popencode creates or removes the marker file.
+A turn that ends with config.PAUSE_PHRASE creates it: the listener types the
+text before the phrase as usual, drops the phrase, and pauses.
 
 The listener reloads config.py when the file changes, so listener settings
 apply without a restart. If the new config.py fails to load, the listener
@@ -40,13 +40,13 @@ Personal replacements live in USER_REPLACEMENTS_PATH, a TOML file of
 "heard" = "replacement" pairs that the listener reloads the same way. They
 add to config.REPLACEMENTS and win on a clash.
 
-pclaude starts the listener detached. A lock file ensures that at most one
-listener per user runs, so several pclaude sessions share one microphone. The
-listener exits once no pclaude is running.
+pclaude and popencode start the listener detached. A lock file ensures that at
+most one listener per user runs, so several pclaude or popencode sessions share
+one microphone. The listener exits once no wrapper is running.
 
 Usage:
 
-    listener.py      listen until no pclaude is running anymore
+    listener.py      listen until no pclaude or popencode is running anymore
 """
 
 import fcntl
@@ -81,7 +81,7 @@ from vad import SpeechSegmenter
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# Check this often whether any pclaude still runs.
+# Check this often whether any pclaude or popencode still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
 
 # Check this often whether config.py or a user file changed.
@@ -90,11 +90,12 @@ FILE_CHECK_INTERVAL_S = 5.0
 # The terminal's delete-previous-character keystroke, same as a real backspace.
 BACKSPACE = b"\x7f"
 
-# Ctrl+U: Claude Code deletes one line of the prompt field, as shown on screen.
+# Ctrl+U: both CLIs delete one line of the prompt field, as shown on screen.
 # Text longer than the terminal is wide continues on the next line, so a long
 # message fills several. 50 Ctrl+U clear messages of up to 50 lines, also text
-# typed by hand; extra ones on an empty prompt do nothing. Ctrl+Y brings the
-# whole text back. Claude Code ignores 100 in one write as a paste.
+# typed by hand; extra ones on an empty prompt do nothing. In Claude Code,
+# Ctrl+Y brings the whole text back. Claude Code ignores 100 in one write as a
+# paste.
 CLEAR_PROMPT = b"\x15" * 50
 
 CONFIG_PATH = Path(config.__file__)
@@ -197,7 +198,7 @@ def _acquire_single_instance_lock() -> IO[str] | None:
 
 
 def _connect_inject(path: Path) -> socket.socket | None:
-    """Connect to a pclaude inject socket; remove it and return None if stale."""
+    """Connect to a wrapper inject socket; remove it and return None if stale."""
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         sock.connect(str(path))
@@ -205,7 +206,7 @@ def _connect_inject(path: Path) -> socket.socket | None:
         sock.close()
         return None
     except ConnectionRefusedError:
-        # No process listens anymore: pclaude was killed before cleaning up.
+        # No process listens anymore: the wrapper was killed before cleaning up.
         sock.close()
         logger.info("removing stale socket %s", path)
         path.unlink(missing_ok=True)
@@ -214,9 +215,9 @@ def _connect_inject(path: Path) -> socket.socket | None:
 
 
 def _connect_newest_inject() -> socket.socket | None:
-    """Connect to the newest live pclaude inject socket, or return None."""
+    """Connect to the newest live wrapper inject socket, or return None."""
     paths = STATE_DIR.glob(INJECT_SOCKET_GLOB)
-    # A socket can vanish between glob() and stat() when its pclaude exits.
+    # A socket can vanish between glob() and stat() when its wrapper exits.
     with_times = []
     for path in paths:
         with suppress(FileNotFoundError):
@@ -228,7 +229,7 @@ def _connect_newest_inject() -> socket.socket | None:
 
 
 def _send(data: bytes) -> bool:
-    """Send data to the newest pclaude; return False if none is running."""
+    """Send data to the newest wrapper; return False if none is running."""
     sock = _connect_newest_inject()
     if sock is None:
         return False
@@ -280,9 +281,9 @@ def _type_turn(
     turn_end: float,
     enter_due: float | None,
 ) -> tuple[bool, float | None]:
-    """Type a finished turn into the newest pclaude and decide when Enter follows.
+    """Type a finished turn into the newest wrapper and decide when Enter follows.
 
-    Return False first if no pclaude is running. Return as second value when to
+    Return False first if no wrapper is running. Return as second value when to
     press Enter for the typed text, or None if nothing waits for Enter.
     """
     if config.CLEAR_PHRASE:
@@ -344,7 +345,7 @@ def _update_partial(shown: str, text: str) -> bool:
 
 
 def _any_session_running() -> bool:
-    """Return whether any pclaude inject socket accepts connections."""
+    """Return whether any wrapper inject socket accepts connections."""
     sock = _connect_newest_inject()
     if sock is None:
         return False
@@ -353,7 +354,7 @@ def _any_session_running() -> bool:
 
 
 def listen() -> None:
-    """Record, segment, transcribe, and inject until no pclaude runs anymore."""
+    """Record, segment, transcribe, and inject until no wrapper runs anymore."""
     segmenter = SpeechSegmenter(
         config.MIN_SILENCE_MS,
         config.MAX_SEGMENT_SECONDS,
@@ -424,7 +425,7 @@ def listen() -> None:
                 if paused:
                     segmenter.flush()  # drop the unfinished turn
                     if not _clear_partial(partial_shown):
-                        logger.info("no pclaude running; exiting")
+                        logger.info("no pclaude or popencode running; exiting")
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
@@ -432,7 +433,7 @@ def listen() -> None:
                 for segment in segmenter.feed(np.concatenate(fresh)):
                     turn_end = time.monotonic()
                     if not _clear_partial(partial_shown):
-                        logger.info("no pclaude running; exiting")
+                        logger.info("no pclaude or popencode running; exiting")
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
@@ -447,7 +448,7 @@ def listen() -> None:
                         )
                     running, enter_due = _type_turn(text, turn_end, enter_due)
                     if not running:
-                        logger.info("no pclaude running; exiting")
+                        logger.info("no pclaude or popencode running; exiting")
                         return
                     if pause_said:
                         LISTENER_PAUSED_PATH.touch()
@@ -460,7 +461,7 @@ def listen() -> None:
                 if current is None and partial_shown:
                     # The segmenter dropped the turn for too little speech.
                     if not _clear_partial(partial_shown):
-                        logger.info("no pclaude running; exiting")
+                        logger.info("no pclaude or popencode running; exiting")
                         return
                     partial_shown = ""
                     partial_checked_samples = 0
@@ -474,7 +475,7 @@ def listen() -> None:
                     partial_text = _apply_replacements(transcribe(current))
                     if partial_text != partial_shown:
                         if not _update_partial(partial_shown, partial_text):
-                            logger.info("no pclaude running; exiting")
+                            logger.info("no pclaude or popencode running; exiting")
                             return
                         partial_shown = partial_text
             # Speaking again before enter_due adds the new turn to the same prompt.
@@ -485,11 +486,11 @@ def listen() -> None:
             ):
                 enter_due = None
                 if not _send(b"\r"):
-                    logger.info("no pclaude running; exiting")
+                    logger.info("no pclaude or popencode running; exiting")
                     return
             if time.monotonic() >= next_session_check:
                 if not _any_session_running():
-                    logger.info("no pclaude running; exiting")
+                    logger.info("no pclaude or popencode running; exiting")
                     return
                 next_session_check = time.monotonic() + SESSION_CHECK_INTERVAL_S
 

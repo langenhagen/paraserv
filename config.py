@@ -16,15 +16,15 @@ listener logs the error and keeps the old settings.
 DEVICE = "cpu"
 
 # Listener setting. A pause of this length ends a spoken turn and sends it to
-# Claude Code.
+# the active CLI.
 MIN_SILENCE_MS = 1500
 
 # Listener setting. Cut a turn at this length even without a pause.
 MAX_SEGMENT_SECONDS = 30.0
 
 # Listener setting. A turn that ends with this word submits the prompt to
-# Claude Code right away, without waiting for SUBMIT_SILENCE_MS. The keyword
-# itself is not sent to Claude, and a turn of only this word just presses
+# the active CLI right away, without waiting for SUBMIT_SILENCE_MS. The keyword
+# itself is not sent to the CLI, and a turn of only this word just presses
 # Enter. Case and trailing punctuation do not matter. "" disables it.
 SUBMIT_KEYWORD: str = "roger"
 
@@ -56,7 +56,7 @@ HOLD_PHRASE: str = "hold it"
 
 # Listener setting. A turn that ends with this phrase clears the whole prompt
 # field, including earlier turns and text typed by hand, and cancels a
-# pending Enter. Ctrl+Y in Claude Code brings the text back. Case and
+# pending Enter. In Claude Code, Ctrl+Y brings the text back. Case and
 # punctuation do not matter. "" disables it.
 CLEAR_PHRASE: str = "clear message"
 
@@ -68,7 +68,7 @@ PAUSE_PHRASE: str = "stop listening"
 
 # Listener setting. Wait at least this long between the transcript and its
 # Enter.
-# Claude Code may treat text and Enter that arrive together as a paste and
+# The CLI may treat text and Enter that arrive together as a paste and
 # insert a line break. Leave it as is; raise it only if a turn lands as an
 # extra line instead of being submitted.
 SUBMIT_DELAY_S = 0.1
@@ -106,6 +106,9 @@ REPLACEMENTS: dict[str, str] = {
     "p claude": "pclaude",
     "p claud": "pclaude",
     "p clawed": "pclaude",
+    "p open code": "popencode",
+    "p opencode": "popencode",
+    "open code": "opencode",
     "cloud code": "Claude Code",
     "cloud haiku": "Claude Haiku",
     "cloud hiq": "Claude Haiku",

@@ -18,12 +18,12 @@ Responses (server -> client):
     to "transcribe": {"type": "text", "text": "..."}
     to "stop": {"type": "done"}, then the server exits
 
-Each pclaude process listens on its own inject socket,
+Each pclaude or popencode process listens on its own inject socket,
 STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every connection
-into Claude Code's prompt field; "\r" submits.
+into the wrapped CLI's prompt field; "\r" submits.
 
 While the marker file STATE_DIR/listener-paused exists, the listener discards
-the microphone audio. Ctrl+\ in pclaude creates or removes it; the
+the microphone audio. Ctrl+\ in pclaude or popencode creates or removes it; the
 listener creates it when it hears config.PAUSE_PHRASE.
 """
 
@@ -65,7 +65,7 @@ INJECT_SOCKET_GLOB = "inject-*.sock"
 
 
 def inject_socket_path(pid: int) -> Path:
-    """Return the inject socket path of the pclaude process with this pid."""
+    """Return the inject socket path of the wrapper process with this pid."""
     return STATE_DIR / f"inject-{pid}.sock"
 
 
