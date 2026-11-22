@@ -22,6 +22,7 @@ The project is structured as follows:
 ├── config.sample.py        Documented template for config.py.
 ├── LICENSE                 License definition.
 ├── listener.py             Records the microphone and sends each spoken turn to the newest wrapper.
+├── ollama_tts.py           Streams Ollama's replies to qtts.
 ├── parakeet_client.py      Talks to the server; transcribes a WAV file or stops the server.
 ├── parakeet_server.py      Loads the Parakeet model once and transcribes audio clips.
 ├── paraserv_protocol.py    Socket locations and the message format.
@@ -69,6 +70,16 @@ printf 'hello' | nc -U ~/.cache/paraserv/inject-<pid>.sock  # type into the newe
 
 In `pclaude`, `popencode`, or `pollama`, speak and pause. Each spoken turn
 appears in the prompt field of the wrapper you started most recently.
+
+`pollama` also reads each Ollama reply aloud as it arrives, using this command:
+
+```bash
+qtts --temperature 1.6 --prebuffer 0 --voice ~/Dev/barn-claude-jarvis/voices/anna/reference.wav
+```
+
+The prompt, your echoed input, and Ollama's spinner are not spoken. `qtts` must
+be on `PATH`; its output goes to `~/.cache/paraserv/ollama-tts.log` on macOS and
+to `$XDG_RUNTIME_DIR/paraserv/ollama-tts.log` on Linux.
 
 | Key or word      | Effect                                               |
 | ---------------- | ---------------------------------------------------- |
@@ -127,7 +138,8 @@ on their inject socket into the prompt field. The listener cuts the microphone
 stream into spoken turns at pauses, has the server transcribe each turn, and
 sends the transcript to the newest running wrapper. While a turn runs, a
 provisional transcript shows in the prompt field; the final transcript replaces
-it at the pause.
+it at the pause. `pollama` also watches the CLI's output: `ollama_tts.py` strips
+terminal codes and streams each assistant line to qtts.
 
 All programs talk over Unix domain sockets: file-system paths that only the
 current user can open, with no TCP port and no network exposure. The sockets,

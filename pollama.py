@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-r"""Run Ollama with speech input from the microphone listener.
+r"""Run Ollama with speech input and spoken replies.
 
 The wrapper runs `ollama` in a pseudo-terminal, so Ollama looks and works as
 before, typing included. It types the text of every connection on the inject
 socket STATE_DIR/inject-<pid>.sock into Ollama's prompt field; "\r" submits.
+Each assistant reply is also piped to qtts and read aloud.
 
 Ctrl+\ pauses or resumes the listener for all wrapper sessions.
 
@@ -18,7 +19,12 @@ Test without voice:
 
 import sys
 
+from ollama_tts import ResponseSpeaker
 from pty_agent import run
 
 if __name__ == "__main__":
-    sys.exit(run("ollama", "pollama"))
+    speaker = ResponseSpeaker()
+    try:
+        sys.exit(run("ollama", "pollama", speaker))
+    finally:
+        speaker.close()

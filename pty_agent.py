@@ -11,12 +11,15 @@ Ctrl+\ pauses or resumes the listener for all wrapper sessions: it creates or
 removes the marker file STATE_DIR/listener-paused and does not reach the CLI.
 
 The pclaude.py, popencode.py, and pollama.py entry points call run();
-command-line arguments are passed to the wrapped command unchanged.
+command-line arguments are passed to the wrapped command unchanged. An optional
+output filter inspects each chunk of the CLI's output without changing what the
+terminal shows.
 """
+
+from __future__ import annotations
 
 # CLI output is intentional; the child commands use fixed local arguments.
 # ruff: noqa: T201, S603, S606
-
 import fcntl
 import os
 import pty
@@ -29,6 +32,7 @@ import termios
 import tty
 from contextlib import suppress
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from paraserv_protocol import (
     LISTENER_LOG_PATH,
@@ -36,6 +40,9 @@ from paraserv_protocol import (
     ensure_state_dir,
     inject_socket_path,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 LISTENER_SCRIPT = Path(__file__).resolve().parent / "listener.py"
 READ_SIZE = 65536
@@ -95,10 +102,15 @@ def _read_inject(server: socket.socket) -> bytes:
     return b"".join(chunks)
 
 
-def _relay(master_fd: int, server: socket.socket) -> None:
+def _relay(
+    master_fd: int,
+    server: socket.socket,
+    output_filter: Callable[[bytes], None] | None,
+) -> None:
     """Shuttle bytes between the terminal, the CLI, and the inject socket.
 
-    Returns once the CLI closes its side of the pseudo-terminal.
+    The output filter sees CLI output before it reaches the terminal. Returns
+    once the CLI closes its side of the pseudo-terminal.
     """
     stdin_fd = sys.stdin.fileno()
     stdout_fd = sys.stdout.fileno()
@@ -112,6 +124,8 @@ def _relay(master_fd: int, server: socket.socket) -> None:
                 return
             if not data:  # EOF on macOS once the child closed the terminal
                 return
+            if output_filter is not None:
+                output_filter(data)
             _write_all(stdout_fd, data)
         if stdin_fd in readable:
             data = os.read(stdin_fd, READ_SIZE)
@@ -123,7 +137,11 @@ def _relay(master_fd: int, server: socket.socket) -> None:
             _write_all(master_fd, _read_inject(server))
 
 
-def run(command: str, name: str) -> int:
+def run(
+    command: str,
+    name: str,
+    output_filter: Callable[[bytes], None] | None = None,
+) -> int:
     """Run command in a pseudo-terminal and return its exit code."""
     if not sys.stdin.isatty():
         sys.exit(f"{name}: standard input must be a terminal")
@@ -155,7 +173,7 @@ def run(command: str, name: str) -> int:
     signal.signal(signal.SIGWINCH, forward_window_size)
     saved_mode = tty.setraw(stdin_fd)
     try:
-        _relay(master_fd, server)
+        _relay(master_fd, server, output_filter)
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved_mode)
         server.close()
