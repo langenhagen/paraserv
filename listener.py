@@ -49,12 +49,15 @@ Usage:
 import fcntl
 import logging
 import re
+import shutil
 import socket
+import subprocess  # nosec B404
 import sys
 import threading
 import time
 from contextlib import suppress
-from typing import IO, TYPE_CHECKING
+from pathlib import Path
+from typing import IO
 
 import numpy as np
 import sounddevice as sd
@@ -70,9 +73,6 @@ from paraserv_protocol import (
     ensure_state_dir,
 )
 from vad import SpeechSegmenter
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # Check this often whether any wrapper still runs.
 SESSION_CHECK_INTERVAL_S = 2.0
@@ -151,6 +151,53 @@ def _send(data: bytes) -> bool:
     return True
 
 
+def _play_submit_sound() -> None:
+    """Play the configured submit sound, if any, without blocking submission."""
+    sound = settings.SUBMIT_SOUND
+    if not sound:
+        return
+    sound_path = Path(sound).expanduser()
+    if not sound_path.is_absolute():
+        sound_path = Path(__file__).resolve().parent / sound_path
+    if not sound_path.is_file():
+        logger.warning("submit sound not found: %s", sound_path)
+        return
+
+    if sys.platform == "darwin":
+        command = ["afplay", str(sound_path)]
+    else:
+        for player, args in (
+            ("paplay", [str(sound_path)]),
+            ("pw-play", [str(sound_path)]),
+            ("aplay", [str(sound_path)]),
+            ("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", str(sound_path)]),
+        ):
+            if shutil.which(player):
+                command = [player, *args]
+                break
+        else:
+            logger.warning("no audio player found for submit sound: %s", sound_path)
+            return
+
+    try:
+        # Detached fire-and-forget: the listener must not wait for the player.
+        subprocess.Popen(  # noqa: S603  # nosec B603
+            command,  # pylint: disable=consider-using-with
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as error:
+        logger.warning("failed to play submit sound %s: %s", sound_path, error)
+
+
+def _send_enter() -> bool:
+    """Play the submit sound and send Enter to the newest wrapper."""
+    _play_submit_sound()
+    return _send(b"\r")
+
+
 def _apply_replacements(text: str) -> str:
     """Apply the replacements from config.py; an empty one deletes the phrase."""
     replacements = settings.REPLACEMENTS
@@ -212,7 +259,7 @@ def _type_turn(
         return False, None
     if submit_said:
         time.sleep(settings.SUBMIT_DELAY_S)
-        return _send(b"\r"), None
+        return _send_enter(), None
     if hold_said or settings.SUBMIT_SILENCE_MS <= 0:
         return True, None
     # A short turn alone, such as "Okay.", gets no Enter; it joins the Enter of
@@ -388,7 +435,7 @@ def listen() -> None:
                 and segmenter.current_segment is None
             ):
                 enter_due = None
-                if not _send(b"\r"):
+                if not _send_enter():
                     logger.info("no wrapper running; exiting")
                     return
             if time.monotonic() >= next_session_check:

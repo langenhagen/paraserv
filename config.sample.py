@@ -74,6 +74,12 @@ PAUSE_PHRASE: str = "stop listening"
 # extra line instead of being submitted.
 SUBMIT_DELAY_S = 0.1
 
+# Listener setting. Sound played when a message is submitted by emulated Enter,
+# either from SUBMIT_KEYWORD or after SUBMIT_SILENCE_MS. Set to a path to an
+# audio file, or to None to play no sound. Relative paths are resolved from the
+# repository directory.
+SUBMIT_SOUND: str | None = "sounds/submit.mp3"
+
 # Listener setting. Microphone polling interval.
 POLL_MS = 150
 

@@ -19,21 +19,24 @@ CONFIG_PATH = Path(__file__).resolve().parent / "config.py"
 logger = logging.getLogger("paraserv-settings")
 
 # Names expected in config.py. Declared for static checkers; load() fills them.
-DEVICE: str
-MIN_SILENCE_MS: int
-MAX_SEGMENT_SECONDS: float
-SUBMIT_KEYWORD: str
-SUBMIT_SILENCE_MS: int
-MIN_SPEECH_MS: int
-MIN_SUBMIT_CHARS: int
-HOLD_PHRASE: str
-CLEAR_PHRASE: str
-PAUSE_PHRASE: str
-SUBMIT_DELAY_S: float
-POLL_MS: int
-PARTIAL_SECONDS: float
-REPLACEMENTS: dict[str, str]
-KEYPHRASES: dict[str, Callable[[], object]]
+# fmt: off
+DEVICE: str                                  # "cpu" or "gpu" Parakeet backend.
+MIN_SILENCE_MS: int                          # Pause that ends a spoken turn.
+MAX_SEGMENT_SECONDS: float                   # Force-cut a turn at this length.
+SUBMIT_KEYWORD: str                          # Final word submits now; "" off.
+SUBMIT_SILENCE_MS: int                       # Silence before auto-submit; 0 off.
+MIN_SPEECH_MS: int                           # Drop short speech before transcribe.
+MIN_SUBMIT_CHARS: int                        # Short text needs explicit submit.
+HOLD_PHRASE: str                             # Final phrase blocks auto-submit.
+CLEAR_PHRASE: str                            # Final phrase clears prompt field.
+PAUSE_PHRASE: str                            # Final phrase pauses listening.
+SUBMIT_DELAY_S: float                        # Delay before emulated Enter.
+SUBMIT_SOUND: str | None                     # Emulated Enter sound; None off.
+POLL_MS: int                                 # Microphone polling interval, ms.
+PARTIAL_SECONDS: float                       # Provisional transcript interval.
+REPLACEMENTS: dict[str, str]                 # Spoken phrase replacements.
+KEYPHRASES: dict[str, Callable[[], object]]  # Trailing phrase actions.
+# fmt: on
 
 
 def _read_config() -> dict[str, object]:
