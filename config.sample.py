@@ -10,18 +10,24 @@ Every uppercase name here becomes an attribute of settings.py, which is what
 the programs read.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Server setting. Parakeet backend. "cpu": int8 ONNX via onnx-asr (0.7 GB
 # download). "gpu": MLX via mlx-audio (2.5 GB download).
-DEVICE = "cpu"
+DEVICE: str = "cpu"
 
 # Listener setting. A pause of this length ends a spoken turn and sends it to
 # the active CLI.
-MIN_SILENCE_MS = 1500
+MIN_SILENCE_MS: int = 1500
 
 # Listener setting. Cut a turn at this length even without a pause.
-MAX_SEGMENT_SECONDS = 30.0
+MAX_SEGMENT_SECONDS: float = 30.0
 
 # Listener setting. A turn that ends with this word submits the prompt to
 # the active CLI right away, without waiting for SUBMIT_SILENCE_MS. The keyword
@@ -33,21 +39,21 @@ SUBMIT_KEYWORD: str = "roger"
 # word. Each turn is typed after MIN_SILENCE_MS already; speaking again before
 # SUBMIT_SILENCE_MS adds to the same prompt. 0 disables it, so only
 # SUBMIT_KEYWORD submits, and turns pile up in the prompt field until then.
-SUBMIT_SILENCE_MS = 3400
+SUBMIT_SILENCE_MS: int = 3400
 
 # Listener setting. Drop a turn with less speech than this before it reaches
 # Parakeet, so nothing is typed. Speech counts in 32 ms Silero frames, so use a
 # multiple of 32. Other values round down, e.g. 400 acts as 384. 0 keeps every
 # turn.
 # See also MIN_SUBMIT_CHARS.
-MIN_SPEECH_MS = 416
+MIN_SPEECH_MS: int = 416
 
 # Listener setting. A turn with fewer characters than this, such as "Okay" or a
 # misheard noise, gets no Enter after SUBMIT_SILENCE_MS; it stays in the prompt
 # field. It is still sent along if longer text before it waits for its Enter.
 # The submit keyword and the Enter key still submit it. 0 disables it.
 # See also MIN_SPEECH_MS.
-MIN_SUBMIT_CHARS = 6
+MIN_SUBMIT_CHARS: int = 6
 
 # Listener setting. A turn that ends with this phrase gets no Enter after
 # SUBMIT_SILENCE_MS, however long the silence lasts. The next turn without the
@@ -72,7 +78,7 @@ PAUSE_PHRASE: str = "stop listening"
 # The CLI may treat text and Enter that arrive together as a paste and
 # insert a line break. Leave it as is; raise it only if a turn lands as an
 # extra line instead of being submitted.
-SUBMIT_DELAY_S = 0.1
+SUBMIT_DELAY_S: float = 0.1
 
 # Listener setting. Sound played when a message is submitted by emulated Enter,
 # either from SUBMIT_KEYWORD or after SUBMIT_SILENCE_MS. Set to a path to an
@@ -81,12 +87,12 @@ SUBMIT_DELAY_S = 0.1
 SUBMIT_SOUND: str | None = "sounds/submit.mp3"
 
 # Listener setting. Microphone polling interval.
-POLL_MS = 150
+POLL_MS: int = 150
 
 # Listener setting. Re-transcribe the audio of an unfinished turn after this
 # much new speech and show it in the prompt field as a provisional transcript,
 # replaced at the pause by the final one. 0 disables provisional transcripts.
-PARTIAL_SECONDS = 1.0
+PARTIAL_SECONDS: float = 1.0
 
 # Listener setting. Phrases to replace in each turn before it is typed, as
 # "heard": "replacement". Whole words, any case. An empty replacement deletes
@@ -138,6 +144,6 @@ def announce_keyphrase() -> None:
     logging.getLogger("paraserv-listener").info("example keyphrase")
 
 
-KEYPHRASES = {
+KEYPHRASES: dict[str, Callable[[], object]] = {
     "example phrase": announce_keyphrase,
 }
