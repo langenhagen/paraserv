@@ -7,8 +7,8 @@ Also listens on the inject socket STATE_DIR/inject-<pid>.sock and types the text
 of every connection into the CLI's prompt field; "\r" submits. Starts the
 microphone listener (listener.py) in the background if it is not running.
 
-Ctrl+\ pauses or resumes the listener for all wrapper sessions: it creates or
-removes the marker file STATE_DIR/listener-paused and does not reach the CLI.
+Ctrl+\ pauses or resumes the listener for this wrapper only: it creates or
+removes STATE_DIR/inject-<pid>.paused and does not reach the CLI.
 
 The pclaude.py, popencode.py, pollama.py, and ppi.py entry points call run();
 command-line arguments are passed to the wrapped command unchanged. Extra
@@ -36,9 +36,9 @@ from typing import TYPE_CHECKING
 
 from paraserv_protocol import (
     LISTENER_LOG_PATH,
-    LISTENER_PAUSED_PATH,
     ensure_state_dir,
     inject_socket_path,
+    paused_path,
 )
 
 if TYPE_CHECKING:
@@ -78,14 +78,14 @@ def _start_listener() -> None:
         )
 
 
-def _take_pause_keys(data: bytes) -> bytes:
-    r"""Toggle the listener pause once per Ctrl+\ in data; return data without them."""
+def _take_pause_keys(data: bytes, marker: Path) -> bytes:
+    r"""Toggle this wrapper's pause once per Ctrl+\ in data; return data without them."""
     for key in PAUSE_KEYS:
         for _ in range(data.count(key)):
-            if LISTENER_PAUSED_PATH.exists():
-                LISTENER_PAUSED_PATH.unlink()
+            if marker.exists():
+                marker.unlink()
             else:
-                LISTENER_PAUSED_PATH.touch()
+                marker.touch()
         data = data.replace(key, b"")
     return data
 
@@ -106,11 +106,13 @@ def _relay(
     master_fd: int,
     server: socket.socket,
     output_filter: Callable[[bytes], None] | None,
+    marker: Path,
 ) -> None:
     """Shuttle bytes between the terminal, the CLI, and the inject socket.
 
-    The output filter sees CLI output before it reaches the terminal. Returns
-    once the CLI closes its side of the pseudo-terminal.
+    The output filter sees CLI output before it reaches the terminal. The marker
+    is this wrapper's pause file. Returns once the CLI closes its side of the
+    pseudo-terminal.
     """
     stdin_fd = sys.stdin.fileno()
     stdout_fd = sys.stdout.fileno()
@@ -130,7 +132,7 @@ def _relay(
         if stdin_fd in readable:
             data = os.read(stdin_fd, READ_SIZE)
             if data:
-                _write_all(master_fd, _take_pause_keys(data))
+                _write_all(master_fd, _take_pause_keys(data, marker))
             else:
                 sources.remove(stdin_fd)
         if server in readable:
@@ -165,7 +167,9 @@ def run(
         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, size)
 
     ensure_state_dir()
-    socket_path = inject_socket_path(os.getpid())
+    wrapper_pid = os.getpid()
+    socket_path = inject_socket_path(wrapper_pid)
+    marker = paused_path(wrapper_pid)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(socket_path))
     server.listen()
@@ -174,11 +178,12 @@ def run(
     signal.signal(signal.SIGWINCH, forward_window_size)
     saved_mode = tty.setraw(stdin_fd)
     try:
-        _relay(master_fd, server, output_filter)
+        _relay(master_fd, server, output_filter, marker)
     finally:
         termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved_mode)
         server.close()
         socket_path.unlink(missing_ok=True)
+        marker.unlink(missing_ok=True)
         os.close(master_fd)
     _, status = os.waitpid(pid, 0)
     return os.waitstatus_to_exitcode(status)

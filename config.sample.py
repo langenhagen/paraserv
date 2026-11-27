@@ -67,10 +67,10 @@ HOLD_PHRASE: str = "hold it"
 # punctuation do not matter. "" disables it.
 CLEAR_PHRASE: str = "clear message"
 
-# Listener setting. A turn that ends with this phrase pauses listening, like
-# Ctrl+\ in any wrapper; Ctrl+\ resumes it. The text before the phrase is typed
-# as usual, the phrase itself is not. Case and punctuation do not matter. ""
-# disables it. The pause holds across wrapper restarts.
+# Listener setting. A turn that ends with this phrase pauses listening for the
+# active wrapper, like Ctrl+\ in that wrapper; Ctrl+\ resumes it. The text
+# before the phrase is typed as usual, the phrase itself is not. Case and
+# punctuation do not matter. "" disables it. The pause ends with the wrapper.
 PAUSE_PHRASE: str = "stop listening"
 
 # Listener setting. Wait at least this long between the transcript and its

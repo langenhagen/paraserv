@@ -5,10 +5,10 @@ Live speech to text client & server with parakeet.
 The main use case for me is the ability to now talk to Claude Code, OpenCode,
 pi, or Ollama hands-free. Speech from the microphone is transcribed by a local
 [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) server
-and typed into the active CLI's prompt field as if typed by hand. Use `pclaude`
-for Claude Code, `popencode` for OpenCode, `ppi` for pi, and `pollama` for
-Ollama. A headset's mute button can be the off switch, alternatively Ctrl+\ in
-any wrapper pauses and resumes listening.
+and typed into the most recently started wrapper's prompt field as if typed by
+hand. Use `pclaude` for Claude Code, `popencode` for OpenCode, `ppi` for pi, and
+`pollama` for Ollama. A headset's mute button can be the off switch,
+alternatively Ctrl+\ in a wrapper pauses and resumes listening for the session.
 Pairs with [barn-claude-jarvis](https://github.com/langenhagen/barn-claude-jarvis),
 my Claude Code plugin that reads Claude's replies aloud, for a spoken
 conversation both ways.
@@ -92,7 +92,7 @@ and `~/.cache/paraserv/pi-tts.log` on macOS, and to the matching files under
 
 | Key or word      | Effect                                               |
 | ---------------- | ---------------------------------------------------- |
-| `Ctrl+\`         | Pause or resume listening in all wrapper sessions.   |
+| `Ctrl+\`         | Pause or resume listening in this wrapper session.   |
 | "roger"          | Submit the spoken message right away.                |
 | "hold it"        | Wait for more speech before submitting.              |
 | "clear message"  | Clear the whole message.                             |
@@ -123,7 +123,7 @@ text back. Change the phrase via `CLEAR_PHRASE` in `config.py`.
 
 Pause listening by saying the pause phrase ("stop listening" by default) as the
 last words of your message. Press `Ctrl+\` to resume. Change the phrase via
-`PAUSE_PHRASE` in `config.py`. The pause holds across wrapper restarts.
+`PAUSE_PHRASE` in `config.py`. The pause ends when that wrapper exits.
 
 All settings live in `config.py`: timings, phrases, `REPLACEMENTS`, and
 `KEYPHRASES`. `REPLACEMENTS` deletes fillers and fixes words that Parakeet

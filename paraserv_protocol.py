@@ -22,9 +22,10 @@ Each pclaude, popencode, pollama, or ppi process listens on its own inject
 socket, STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every
 connection into the wrapped CLI's prompt field; "\r" submits.
 
-While the marker file STATE_DIR/listener-paused exists, the listener discards
-the microphone audio. Ctrl+\ in any wrapper creates or removes it; the listener
-creates it when it hears settings.PAUSE_PHRASE.
+Each wrapper has its own pause marker. While the newest wrapper's marker exists,
+the listener discards the microphone audio. Ctrl+\ in a wrapper toggles only
+that wrapper's marker; the listener marks the active wrapper when it hears
+settings.PAUSE_PHRASE.
 """
 
 import json
@@ -60,13 +61,22 @@ SERVER_LOCK_PATH = STATE_DIR / "parakeet-server.lock"
 SERVER_LOG_PATH = STATE_DIR / "parakeet-server.log"
 LISTENER_LOCK_PATH = STATE_DIR / "listener.lock"
 LISTENER_LOG_PATH = STATE_DIR / "listener.log"
-LISTENER_PAUSED_PATH = STATE_DIR / "listener-paused"
 INJECT_SOCKET_GLOB = "inject-*.sock"
 
 
 def inject_socket_path(pid: int) -> Path:
     """Return the inject socket path of the wrapper process with this pid."""
     return STATE_DIR / f"inject-{pid}.sock"
+
+
+def paused_path(pid: int) -> Path:
+    """Return the pause marker path of the wrapper process with this pid."""
+    return STATE_DIR / f"inject-{pid}.paused"
+
+
+def paused_path_for_inject(socket_path: Path) -> Path:
+    """Return the pause marker belonging to an inject socket."""
+    return socket_path.with_suffix(".paused")
 
 
 def ensure_state_dir() -> None:

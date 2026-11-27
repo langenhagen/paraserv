@@ -22,11 +22,12 @@ type the new one. The pause at the end of the turn replaces it with the
 final transcript the same way. settings.PARTIAL_SECONDS = 0 disables
 provisional transcripts.
 
-While the marker file LISTENER_PAUSED_PATH exists, the listener discards the
+While the active wrapper's marker file exists, the listener discards the
 microphone audio and drops an unfinished turn together with its provisional
-transcript. Ctrl+\ in any wrapper creates or removes the marker file.
-A turn that ends with settings.PAUSE_PHRASE creates it: the listener types the
-text before the phrase as usual, drops the phrase, and pauses.
+transcript. Ctrl+\ in that wrapper creates or removes its own marker file.
+A turn that ends with settings.PAUSE_PHRASE creates it for the active wrapper:
+the listener types the text before the phrase as usual, drops the phrase, and
+pauses. The active wrapper is the one whose inject socket was created last.
 
 The listener reloads config.py when the file changes, so listener settings,
 replacements, and keyphrases apply without a restart. If the new config.py
@@ -67,10 +68,10 @@ from parakeet_client import connect_or_start_server, transcribe
 from paraserv_protocol import (
     INJECT_SOCKET_GLOB,
     LISTENER_LOCK_PATH,
-    LISTENER_PAUSED_PATH,
     SAMPLE_RATE,
     STATE_DIR,
     ensure_state_dir,
+    paused_path_for_inject,
 )
 from vad import SpeechSegmenter
 
@@ -127,15 +128,25 @@ def _connect_inject(path: Path) -> socket.socket | None:
     return sock
 
 
-def _connect_newest_inject() -> socket.socket | None:
-    """Connect to the newest live wrapper inject socket, or return None."""
-    paths = STATE_DIR.glob(INJECT_SOCKET_GLOB)
+def _inject_paths_newest_first() -> list[Path]:
+    """Return wrapper inject socket paths, newest first."""
     # A socket can vanish between glob() and stat() when its wrapper exits.
     with_times = []
-    for path in paths:
+    for path in STATE_DIR.glob(INJECT_SOCKET_GLOB):
         with suppress(FileNotFoundError):
             with_times.append((path.stat().st_mtime, path))
-    for _, path in sorted(with_times, reverse=True):
+    return [path for _, path in sorted(with_times, reverse=True)]
+
+
+def _active_paused_path() -> Path | None:
+    """Return the pause marker of the wrapper receiving speech, or None."""
+    paths = _inject_paths_newest_first()
+    return paused_path_for_inject(paths[0]) if paths else None
+
+
+def _connect_newest_inject() -> socket.socket | None:
+    """Connect to the newest live wrapper inject socket, or return None."""
+    for path in _inject_paths_newest_first():
         if (sock := _connect_inject(path)) is not None:
             return sock
     return None
@@ -369,7 +380,8 @@ def listen() -> None:
             with lock:
                 fresh = pending_chunks.copy()
                 pending_chunks.clear()
-            if LISTENER_PAUSED_PATH.exists() != paused:
+            active_paused = _active_paused_path()
+            if (active_paused is not None and active_paused.exists()) != paused:
                 paused = not paused
                 logger.info("paused" if paused else "resumed")
                 if paused:
@@ -401,10 +413,11 @@ def listen() -> None:
                         logger.info("no wrapper running; exiting")
                         return
                     if pause_said:
-                        LISTENER_PAUSED_PATH.touch()
-                        paused = True
-                        segmenter.flush()  # drop the speech after the pause phrase
-                        logger.info("paused by the pause phrase")
+                        if (paused_file := _active_paused_path()) is not None:
+                            paused_file.touch()
+                            paused = True
+                            segmenter.flush()  # drop the speech after the phrase
+                            logger.info("paused by the pause phrase")
                         break
 
                 current = segmenter.current_segment
