@@ -10,7 +10,7 @@ microphone listener (listener.py) in the background if it is not running.
 Ctrl+\ pauses or resumes the listener for all wrapper sessions: it creates or
 removes the marker file STATE_DIR/listener-paused and does not reach the CLI.
 
-The pclaude.py, popencode.py, and pollama.py entry points call run();
+The pclaude.py, popencode.py, pollama.py, and ppi.py entry points call run();
 command-line arguments are passed to the wrapped command unchanged. An optional
 output filter inspects each chunk of the CLI's output without changing what the
 terminal shows.

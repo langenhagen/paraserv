@@ -37,9 +37,9 @@ gitignored config.py next to this listener; config.sample.py documents them.
 A turn ending with a phrase from settings.KEYPHRASES runs its action instead
 of typing the phrase.
 
-pclaude, popencode, and pollama start the listener detached. A lock file ensures
-that at most one listener per user runs, so sessions of these wrappers share one
-microphone. The listener exits once no wrapper is running.
+pclaude, popencode, pollama, and ppi start the listener detached. A lock file
+ensures that at most one listener per user runs, so sessions of these wrappers
+share one microphone. The listener exits once no wrapper is running.
 
 Usage:
 

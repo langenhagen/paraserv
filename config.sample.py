@@ -118,6 +118,7 @@ REPLACEMENTS: dict[str, str] = {
     "p clawed": "pclaude",
     "p open code": "popencode",
     "p opencode": "popencode",
+    "p pi": "ppi",
     "p lama": "pollama",
     "p llama": "pollama",
     "p ollama": "pollama",

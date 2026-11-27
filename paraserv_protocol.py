@@ -18,9 +18,9 @@ Responses (server -> client):
     to "transcribe": {"type": "text", "text": "..."}
     to "stop": {"type": "done"}, then the server exits
 
-Each pclaude, popencode, or pollama process listens on its own inject socket,
-STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every connection
-into the wrapped CLI's prompt field; "\r" submits.
+Each pclaude, popencode, pollama, or ppi process listens on its own inject
+socket, STATE_DIR/inject-<pid>.sock. It types the raw UTF-8 bytes of every
+connection into the wrapped CLI's prompt field; "\r" submits.
 
 While the marker file STATE_DIR/listener-paused exists, the listener discards
 the microphone audio. Ctrl+\ in any wrapper creates or removes it; the listener

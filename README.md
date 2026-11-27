@@ -3,12 +3,12 @@
 Live speech to text client & server with parakeet.
 
 The main use case for me is the ability to now talk to Claude Code, OpenCode,
-or Ollama hands-free. Speech from the microphone is transcribed by a local
+pi, or Ollama hands-free. Speech from the microphone is transcribed by a local
 [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) server
 and typed into the active CLI's prompt field as if typed by hand. Use `pclaude`
-for Claude Code, `popencode` for OpenCode, and `pollama` for Ollama. A headset's
-mute button can be the off switch, alternatively Ctrl+\ in any wrapper pauses
-and resumes listening.
+for Claude Code, `popencode` for OpenCode, `ppi` for pi, and `pollama` for
+Ollama. A headset's mute button can be the off switch, alternatively Ctrl+\ in
+any wrapper pauses and resumes listening.
 Pairs with [barn-claude-jarvis](https://github.com/langenhagen/barn-claude-jarvis),
 my Claude Code plugin that reads Claude's replies aloud, for a spoken
 conversation both ways.
@@ -28,11 +28,13 @@ The project is structured as follows:
 ├── paraserv_protocol.py    Socket locations and the message format.
 ├── pclaude.py              Runs claude with speech input.
 ├── pclaude.sh              Runs pclaude.py through the project venv.
+├── ppi.py                  Runs pi with speech input.
+├── ppi.sh                  Runs ppi.py through the project venv.
 ├── pollama.py              Runs ollama with speech input.
 ├── pollama.sh              Runs pollama.py through the project venv.
 ├── popencode.py            Runs opencode with speech input.
 ├── popencode.sh            Runs popencode.py through the project venv.
-├── pty_agent.py            Shared pseudo-terminal wrapper for the three CLI wrappers.
+├── pty_agent.py            Shared pseudo-terminal wrapper for the four CLI wrappers.
 ├── pyproject.toml          Project metadata and dependencies.
 ├── README.md               You are here now.
 ├── settings.py             Loads config.py; the programs read settings.*.
@@ -50,6 +52,7 @@ cp config.sample.py config.py                           # create your personal c
 sudo ln -sf "$PWD/pclaude.sh" /usr/local/bin/pclaude    # link the CLI so you can use it everywhere
 sudo ln -sf "$PWD/popencode.sh" /usr/local/bin/popencode
 sudo ln -sf "$PWD/pollama.sh" /usr/local/bin/pollama
+sudo ln -sf "$PWD/ppi.sh" /usr/local/bin/ppi
 ```
 
 On macOS, the terminal app needs microphone access, see System Settings >
@@ -62,13 +65,15 @@ pclaude                                                     # run claude with sp
 pclaude --continue                                          # all arguments go to claude
 popencode                                                   # run opencode with speech input
 popencode --continue                                        # all arguments go to opencode
+ppi                                                         # run pi with speech input
+ppi --continue                                              # all arguments go to pi
 pollama run qwen3.5:9b                                      # run Ollama with speech input
 .venv/bin/python parakeet_client.py x.wav                   # transcribe a 16 kHz mono 16-bit WAV file
 .venv/bin/python parakeet_client.py --stop-server           # stop the server and free its memory
 printf 'hello' | nc -U ~/.cache/paraserv/inject-<pid>.sock  # type into the newest wrapper without voice
 ```
 
-In `pclaude`, `popencode`, or `pollama`, speak and pause. Each spoken turn
+In `pclaude`, `popencode`, `ppi`, or `pollama`, speak and pause. Each spoken turn
 appears in the prompt field of the wrapper you started most recently.
 
 `pollama` also reads each Ollama reply aloud as it arrives, using this command:
@@ -132,14 +137,14 @@ server; the next turn starts a fresh one.
 
 ## How It Works
 
-`pclaude`, `popencode`, and `pollama` run their CLI in a pseudo-terminal, so the
-CLI looks and works as before, typing included. They type the text they receive
-on their inject socket into the prompt field. The listener cuts the microphone
-stream into spoken turns at pauses, has the server transcribe each turn, and
-sends the transcript to the newest running wrapper. While a turn runs, a
-provisional transcript shows in the prompt field; the final transcript replaces
-it at the pause. `pollama` also watches the CLI's output: `ollama_tts.py` strips
-terminal codes and streams each assistant line to qtts.
+`pclaude`, `popencode`, `ppi`, and `pollama` run their CLI in a pseudo-terminal,
+so the CLI looks and works as before, typing included. They type the text they
+receive on their inject socket into the prompt field. The listener cuts the
+microphone stream into spoken turns at pauses, has the server transcribe each
+turn, and sends the transcript to the newest running wrapper. While a turn runs,
+a provisional transcript shows in the prompt field; the final transcript
+replaces it at the pause. `pollama` also watches the CLI's output:
+`ollama_tts.py` strips terminal codes and streams each assistant line to qtts.
 
 All programs talk over Unix domain sockets: file-system paths that only the
 current user can open, with no TCP port and no network exposure. The sockets,
