@@ -11,9 +11,9 @@ Ctrl+\ pauses or resumes the listener for all wrapper sessions: it creates or
 removes the marker file STATE_DIR/listener-paused and does not reach the CLI.
 
 The pclaude.py, popencode.py, pollama.py, and ppi.py entry points call run();
-command-line arguments are passed to the wrapped command unchanged. An optional
-output filter inspects each chunk of the CLI's output without changing what the
-terminal shows.
+command-line arguments are passed to the wrapped command unchanged. Extra
+arguments can be inserted before them. An optional output filter inspects each
+chunk of the CLI's output without changing what the terminal shows.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from paraserv_protocol import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 LISTENER_SCRIPT = Path(__file__).resolve().parent / "listener.py"
 READ_SIZE = 65536
@@ -141,6 +141,7 @@ def run(
     command: str,
     name: str,
     output_filter: Callable[[bytes], None] | None = None,
+    extra_args: Sequence[str] = (),
 ) -> int:
     """Run command in a pseudo-terminal and return its exit code."""
     if not sys.stdin.isatty():
@@ -153,7 +154,7 @@ def run(
         # Child: give the new terminal the real one's size before the CLI reads it.
         fcntl.ioctl(sys.stdin.fileno(), termios.TIOCSWINSZ, window_size)
         try:
-            os.execvp(command, [command, *sys.argv[1:]])  # nosec B606
+            os.execvp(command, [command, *extra_args, *sys.argv[1:]])  # nosec B606
         except OSError as error:
             print(f"{name}: cannot run {command}: {error}", file=sys.stderr)
             os._exit(127)

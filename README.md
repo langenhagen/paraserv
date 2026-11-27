@@ -28,7 +28,8 @@ The project is structured as follows:
 ├── paraserv_protocol.py    Socket locations and the message format.
 ├── pclaude.py              Runs claude with speech input.
 ├── pclaude.sh              Runs pclaude.py through the project venv.
-├── ppi.py                  Runs pi with speech input.
+├── pi_tts.ts               Streams pi's replies to qtts.
+├── ppi.py                  Runs pi with speech input and spoken replies.
 ├── ppi.sh                  Runs ppi.py through the project venv.
 ├── pollama.py              Runs ollama with speech input.
 ├── pollama.sh              Runs pollama.py through the project venv.
@@ -65,7 +66,7 @@ pclaude                                                     # run claude with sp
 pclaude --continue                                          # all arguments go to claude
 popencode                                                   # run opencode with speech input
 popencode --continue                                        # all arguments go to opencode
-ppi                                                         # run pi with speech input
+ppi                                                         # run pi with speech input and spoken replies
 ppi --continue                                              # all arguments go to pi
 pollama run qwen3.5:9b                                      # run Ollama with speech input
 .venv/bin/python parakeet_client.py x.wav                   # transcribe a 16 kHz mono 16-bit WAV file
@@ -76,15 +77,18 @@ printf 'hello' | nc -U ~/.cache/paraserv/inject-<pid>.sock  # type into the newe
 In `pclaude`, `popencode`, `ppi`, or `pollama`, speak and pause. Each spoken turn
 appears in the prompt field of the wrapper you started most recently.
 
-`pollama` also reads each Ollama reply aloud as it arrives, using this command:
+`pollama` reads each reply aloud as it arrives; `ppi` waits until the reply is
+finished. Both use this command:
 
 ```bash
 qtts --temperature 1.6 --prebuffer 0 --voice ~/Dev/barn-claude-jarvis/voices/anna/reference.wav
 ```
 
-The prompt, your echoed input, and Ollama's spinner are not spoken. `qtts` must
-be on `PATH`; its output goes to `~/.cache/paraserv/ollama-tts.log` on macOS and
-to `$XDG_RUNTIME_DIR/paraserv/ollama-tts.log` on Linux.
+The prompt, your echoed input, and Ollama's spinner are not spoken. `ppi` uses
+a pi extension, so thinking, tool calls, and code blocks are not spoken either.
+`qtts` must be on `PATH`; its output goes to `~/.cache/paraserv/ollama-tts.log`
+and `~/.cache/paraserv/pi-tts.log` on macOS, and to the matching files under
+`$XDG_RUNTIME_DIR/paraserv/` on Linux.
 
 | Key or word      | Effect                                               |
 | ---------------- | ---------------------------------------------------- |
@@ -145,6 +149,8 @@ turn, and sends the transcript to the newest running wrapper. While a turn runs,
 a provisional transcript shows in the prompt field; the final transcript
 replaces it at the pause. `pollama` also watches the CLI's output:
 `ollama_tts.py` strips terminal codes and streams each assistant line to qtts.
+`ppi` loads `pi_tts.ts`, which uses pi's message events to speak each finished
+assistant reply with the same qtts command.
 
 All programs talk over Unix domain sockets: file-system paths that only the
 current user can open, with no TCP port and no network exposure. The sockets,
